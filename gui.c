@@ -4,6 +4,7 @@
 
 #include "gui.h"
 #include "logger.h"
+#include "resource.h"
 #include <stdio.h>
 
 #define CLASS_NAME L"PeekWindowClass"
@@ -74,8 +75,20 @@ int gui_init(HINSTANCE hInstance) {
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.lpszClassName = CLASS_NAME;
-    wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-    wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+
+    // Load custom icon from resources
+    wc.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_APP_ICON));
+    wc.hIconSm = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(IDI_APP_ICON),
+                                   IMAGE_ICON, 16, 16, 0);
+
+    // Fallback to default if custom icon fails to load
+    if (!wc.hIcon) {
+        wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+        LOG_WARNING("Failed to load custom icon, using default");
+    }
+    if (!wc.hIconSm) {
+        wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+    }
 
     if (!RegisterClassEx(&wc)) {
         LOG_ERROR("Failed to register window class");

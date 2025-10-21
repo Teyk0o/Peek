@@ -19,16 +19,21 @@ set(HEADERS
     network.h
     gui.h
     logger.h
+    resource.h
 )
 
-add_executable(Peek WIN32 ${SOURCES} ${HEADERS})
+# Add Windows resource file for icon
+if(WIN32)
+    enable_language(RC)
+    set(RESOURCES app.rc)
+endif()
+
+add_executable(Peek WIN32 ${SOURCES} ${HEADERS} ${RESOURCES})
 
 target_link_libraries(Peek
     ws2_32   # Winsock
     iphlpapi # IP Helper API
     comctl32 # Common Controls
-    uxtheme  # For visuals themes
-    dwmapi   # Desktop Window Manager, Dark Mode
 )
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
