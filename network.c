@@ -198,3 +198,21 @@ void network_get_stats(NetworkStats* out_stats) {
         memcpy(out_stats, &stats, sizeof(NetworkStats));
     }
 }
+
+int network_get_all_seen_connections(NetworkConnection** connections, int* count) {
+    if (!initialized) {
+        return -1;
+    }
+
+    *connections = (NetworkConnection*)malloc(seen_count * sizeof(NetworkConnection));
+    if (*connections == NULL) {
+        return -1;
+    }
+
+    for (int i = 0; i < seen_count; i++) {
+        memcpy(&(*connections)[i], &seen_connections[i], sizeof(NetworkConnection));
+    }
+
+    *count = seen_count;
+    return 0;
+}

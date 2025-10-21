@@ -5,9 +5,9 @@
 #ifndef PEEK_NETWORK_H
 #define PEEK_NETWORK_H
 
-#include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <windows.h>
 #include <iphlpapi.h>
 
 #pragma comment(lib, "iphlpapi.lib")
@@ -47,5 +47,7 @@ void network_get_stats(NetworkStats* stats);
 void network_format_ip(DWORD addr, char* buffer, size_t size);
 
 void network_get_process_name(DWORD pid, char* buffer, size_t size);
+
+int network_get_all_seen_connections(NetworkConnection** connections, int* count);
 
 #endif

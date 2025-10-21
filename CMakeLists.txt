@@ -32,7 +32,13 @@ target_link_libraries(Peek
 )
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
-    set_target_properties(Peek PROPERTIES
-        LINK_FLAGS "/SUBSYSTEM:CONSOLE"
-    )
+    if(MINGW)
+        set_target_properties(Peek PROPERTIES
+            LINK_FLAGS "-Wl,--subsystem,console"
+        )
+    else()
+        set_target_properties(Peek PROPERTIES
+            LINK_FLAGS "/SUBSYSTEM:CONSOLE"
+        )
+    endif()
 endif ()

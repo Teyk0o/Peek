@@ -5,9 +5,9 @@
 #ifndef PEEK_GUI_H
 #define PEEK_GUI_H
 
+#include "network.h"
 #include <windows.h>
 #include <commctrl.h>
-#include "network.h"
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "uxtheme.lib")

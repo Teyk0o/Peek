@@ -28,12 +28,6 @@ void logger_init(void) {
 
     freopen("CONOUT$", "w", stdout);
     freopen("CONOUT$", "w", stderr);
-
-    printf(ANSI_BOLD ANSI_CYAN);
-    printf("╔═══════════════════════════════════════════════════════════════╗\n");
-    printf("║                  PEEK - Network Monitor                       ║\n");
-    printf("╚═══════════════════════════════════════════════════════════════╝\n");
-    printf(ANSI_RESET "\n");
 }
 
 void logger_log(const LogLevel level, const char* format, ...) {
