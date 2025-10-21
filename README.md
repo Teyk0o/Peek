@@ -9,7 +9,7 @@ Peek lets you instantly see which processes are talking to which destinations �
 
 ---
 
-## 🎯 Overview
+## Overview
 
 **PEEK** is a lightweight, open-source network monitoring tool written in C. It provides real-time visibility into TCP connections established on your Windows machine, with intelligent filtering and process association.
 
@@ -17,7 +17,7 @@ It aims to fill the gap between heavy tools like Wireshark and limited CLI utili
 
 ---
 
-## 🛠️ Project Architecture
+## Project Architecture
 
 ```
 Peek/
@@ -39,7 +39,7 @@ Peek/
 
 ---
 
-## 🔍 Core Modules
+## Core Modules
 
 ### **1. Network Module (`network.c/h`)**
 
@@ -123,7 +123,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, ...) {
 
 ---
 
-## ⚙️ Technologies & APIs
+## Technologies & APIs
 
 | API                         | Purpose                                   |
 | --------------------------- | ----------------------------------------- |
@@ -142,7 +142,7 @@ Linked Libraries:
 
 ---
 
-## 🎨 Design & UX
+## Design & UX
 
 * Modern light theme inspired by Visual Studio Code
 * Blue flash effect for new connections
@@ -152,7 +152,7 @@ Linked Libraries:
 
 ---
 
-## 🚀 Build & Distribution
+## Build & Distribution
 
 **Using CMake:**
 
@@ -168,7 +168,7 @@ cmake --build build --config Release
 
 ---
 
-## 📊 Performance
+## Performance
 
 | Resource | Typical usage         |
 | -------- | --------------------- |
@@ -181,7 +181,7 @@ Optimized for low overhead via static arrays, caching, and minimal redraw logic.
 
 ---
 
-## 🔐 Permissions
+## Permissions
 
 | Mode          | Access level                      |
 | ------------- | --------------------------------- |
@@ -192,7 +192,7 @@ PEEK runs fine without admin rights, but with limited visibility.
 
 ---
 
-## 🧭 Typical Use Cases
+## Typical Use Cases
 
 | Role      | Problem                              | Solution                   |
 | --------- | ------------------------------------ | -------------------------- |
@@ -202,7 +202,7 @@ PEEK runs fine without admin rights, but with limited visibility.
 
 ---
 
-## 🆚 Comparison
+## Comparison
 
 | Feature            | **PEEK** | TCPView   | Netstat | Wireshark  |
 | ------------------ | -------- | --------- | ------- | ---------- |
@@ -214,7 +214,7 @@ PEEK runs fine without admin rights, but with limited visibility.
 
 ---
 
-## 🧩 Known Limitations
+## Known Limitations
 
 * IPv4 only (AF_INET)
 * TCP only (no UDP/ICMP)
@@ -223,7 +223,7 @@ PEEK runs fine without admin rights, but with limited visibility.
 
 ---
 
-## 📈 Future Roadmap
+## Future Roadmap
 
 **Short term:**
 
@@ -246,7 +246,7 @@ PEEK runs fine without admin rights, but with limited visibility.
 
 ---
 
-## 🏆 Highlights
+## Highlights
 
 * Precise connection direction detection (via TCP_TABLE_OWNER_PID_LISTENER)
 * Smart connection grouping (reduce noise by up to 90%)
@@ -257,7 +257,7 @@ PEEK runs fine without admin rights, but with limited visibility.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 PEEK is open-source and welcomes contributions!
 Feel free to submit pull requests, report issues, or suggest enhancements.
@@ -268,12 +268,12 @@ git clone https://github.com/Teyk0o/Peek.git
 
 ---
 
-## 📜 License
+## License
 
-MIT License © 2025 Théo V. / Teyko
+CC BY-NC-SA 4.0 © 2025 Théo V. / Teyko
 
 ---
 
 <div align="center">
-Made with ❤️ in C for Windows Developer
+Made with ❤️ in C
 </div>
