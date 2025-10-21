@@ -125,6 +125,20 @@ int network_get_connections(NetworkConnection** connections, int* count) {
             conn->pid = row.dwOwningPid;
             conn->state = row.dwState;
 
+            // Determine connection direction
+            // Heuristic: high port (>= 49152) typically means outbound from that end
+            // Common server ports (< 1024) typically mean inbound to client
+            if (conn->local_port >= 49152 && conn->remote_port < 49152) {
+                conn->direction = CONN_OUTBOUND;  // We initiated
+            } else if (conn->remote_port >= 49152 && conn->local_port < 49152) {
+                conn->direction = CONN_INBOUND;   // Remote initiated
+            } else if (conn->remote_port == 80 || conn->remote_port == 443 ||
+                       conn->remote_port == 21 || conn->remote_port == 22) {
+                conn->direction = CONN_OUTBOUND;  // Common protocols we're accessing
+            } else {
+                conn->direction = CONN_OUTBOUND;  // Default to outbound
+            }
+
             network_get_process_name(conn->pid, conn->process_name, MAX_PROCESS_NAME);
 
             GetLocalTime(&conn->timestamp);

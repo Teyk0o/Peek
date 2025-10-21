@@ -16,6 +16,12 @@
 #define MAX_CONNECTIONS 2000
 #define MAX_PROCESS_NAME 260
 
+typedef enum {
+    CONN_OUTBOUND,  // Local initiated connection
+    CONN_INBOUND,   // Remote initiated connection
+    CONN_UNKNOWN
+} ConnectionDirection;
+
 typedef struct {
     DWORD local_addr;
     DWORD local_port;
@@ -23,6 +29,7 @@ typedef struct {
     DWORD remote_port;
     DWORD pid;
     DWORD state;
+    ConnectionDirection direction;
     char process_name[MAX_PROCESS_NAME];
     SYSTEMTIME timestamp;
 } NetworkConnection;
