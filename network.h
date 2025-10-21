@@ -30,6 +30,7 @@ typedef struct {
     DWORD pid;
     DWORD state;
     ConnectionDirection direction;
+    BOOL is_localhost;
     char process_name[MAX_PROCESS_NAME];
     SYSTEMTIME timestamp;
 } NetworkConnection;

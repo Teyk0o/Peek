@@ -12,6 +12,15 @@ static int seen_count = 0;
 static NetworkStats stats = {0};
 static BOOL initialized = FALSE;
 
+// Cache of listening ports - used to determine connection direction
+typedef struct {
+    DWORD port;
+    DWORD pid;
+} ListeningPort;
+
+static ListeningPort listening_ports[1000];
+static int listening_ports_count = 0;
+
 int network_init(void) {
     LOG_INFO("Network module initialization...");
 
@@ -50,6 +59,56 @@ void network_cleanup(void) {
     initialized = FALSE;
 }
 
+static void update_listening_ports(void) {
+    PMIB_TCPTABLE_OWNER_PID pTcpTable = NULL;
+    DWORD dwSize = 0;
+    DWORD dwRetVal = 0;
+
+    // Get table size
+    dwRetVal = GetExtendedTcpTable(NULL, &dwSize, FALSE, AF_INET,
+                                    TCP_TABLE_OWNER_PID_LISTENER, 0);
+
+    if (dwRetVal != ERROR_INSUFFICIENT_BUFFER) {
+        listening_ports_count = 0;
+        return;
+    }
+
+    pTcpTable = (PMIB_TCPTABLE_OWNER_PID)malloc(dwSize);
+    if (pTcpTable == NULL) {
+        listening_ports_count = 0;
+        return;
+    }
+
+    dwRetVal = GetExtendedTcpTable(pTcpTable, &dwSize, FALSE, AF_INET,
+                                    TCP_TABLE_OWNER_PID_LISTENER, 0);
+
+    if (dwRetVal != NO_ERROR) {
+        free(pTcpTable);
+        listening_ports_count = 0;
+        return;
+    }
+
+    // Store listening ports
+    listening_ports_count = 0;
+    for (DWORD i = 0; i < pTcpTable->dwNumEntries && listening_ports_count < 1000; i++) {
+        MIB_TCPROW_OWNER_PID row = pTcpTable->table[i];
+        listening_ports[listening_ports_count].port = ntohs((u_short)row.dwLocalPort);
+        listening_ports[listening_ports_count].pid = row.dwOwningPid;
+        listening_ports_count++;
+    }
+
+    free(pTcpTable);
+}
+
+static BOOL is_listening_on_port(DWORD port, DWORD pid) {
+    for (int i = 0; i < listening_ports_count; i++) {
+        if (listening_ports[i].port == port && listening_ports[i].pid == pid) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 void network_format_ip(DWORD addr, char* buffer, const size_t size) {
     const unsigned char* bytes = (unsigned char*)&addr;
     snprintf(buffer, size, "%d.%d.%d.%d", bytes[0], bytes[1], bytes[2], bytes[3]);
@@ -81,6 +140,9 @@ int network_get_connections(NetworkConnection** connections, int* count) {
     PMIB_TCPTABLE_OWNER_PID pTcpTable = NULL;
     DWORD dwSize = 0;
     DWORD dwRetVal = 0;
+
+    // Update listening ports cache for accurate direction detection
+    update_listening_ports();
 
     dwRetVal = GetExtendedTcpTable(NULL, &dwSize, FALSE, AF_INET,
                                     TCP_TABLE_OWNER_PID_ALL, 0);
@@ -125,18 +187,18 @@ int network_get_connections(NetworkConnection** connections, int* count) {
             conn->pid = row.dwOwningPid;
             conn->state = row.dwState;
 
-            // Determine connection direction
-            // Heuristic: high port (>= 49152) typically means outbound from that end
-            // Common server ports (< 1024) typically mean inbound to client
-            if (conn->local_port >= 49152 && conn->remote_port < 49152) {
-                conn->direction = CONN_OUTBOUND;  // We initiated
-            } else if (conn->remote_port >= 49152 && conn->local_port < 49152) {
-                conn->direction = CONN_INBOUND;   // Remote initiated
-            } else if (conn->remote_port == 80 || conn->remote_port == 443 ||
-                       conn->remote_port == 21 || conn->remote_port == 22) {
-                conn->direction = CONN_OUTBOUND;  // Common protocols we're accessing
+            // Check if this is a localhost connection (127.0.0.1)
+            const unsigned char* local_bytes = (unsigned char*)&conn->local_addr;
+            const unsigned char* remote_bytes = (unsigned char*)&conn->remote_addr;
+            conn->is_localhost = (local_bytes[0] == 127 && remote_bytes[0] == 127);
+
+            // Determine connection direction accurately using listening ports
+            // If we're listening on the local port with this PID, it's INBOUND
+            // Otherwise, we initiated the connection (OUTBOUND)
+            if (is_listening_on_port(conn->local_port, conn->pid)) {
+                conn->direction = CONN_INBOUND;  // We're the server accepting connections
             } else {
-                conn->direction = CONN_OUTBOUND;  // Default to outbound
+                conn->direction = CONN_OUTBOUND; // We initiated this connection
             }
 
             network_get_process_name(conn->pid, conn->process_name, MAX_PROCESS_NAME);

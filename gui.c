@@ -19,6 +19,7 @@
 #define ID_RADIO_ALL 1008
 #define ID_RADIO_OUTBOUND 1009
 #define ID_RADIO_INBOUND 1010
+#define ID_CHECK_LOCALHOST 1011
 
 #define FLASH_DURATION_MS 1500
 #define MAX_HIGHLIGHTED_ITEMS 100
@@ -37,9 +38,11 @@ static HWND g_hwndBtnClear = NULL;
 static HWND g_hwndRadioAll = NULL;
 static HWND g_hwndRadioOutbound = NULL;
 static HWND g_hwndRadioInbound = NULL;
+static HWND g_hwndCheckLocalhost = NULL;
 static HINSTANCE g_hInstance = NULL;
 static BOOL g_monitoring = FALSE;
 static ConnectionDirection g_filter = CONN_OUTBOUND; // Default to outbound only
+static BOOL g_show_localhost = TRUE; // Default to show localhost connections
 
 static HighlightedItem g_highlighted_items[MAX_HIGHLIGHTED_ITEMS];
 static int g_highlighted_count = 0;
@@ -193,6 +196,22 @@ void CreateControls(HWND hwnd) {
     // Set default to Outbound
     SendMessage(g_hwndRadioOutbound, BM_SETCHECK, BST_CHECKED, 0);
 
+    // Checkbox for localhost filtering
+    int checkX = radioX + radioWidth * 2 + 70;
+    g_hwndCheckLocalhost = CreateWindowW(
+        L"BUTTON",
+        L"Show Localhost",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        checkX, btnY + 5, 130, 25,
+        hwnd,
+        (HMENU)ID_CHECK_LOCALHOST,
+        g_hInstance,
+        NULL
+    );
+
+    // Set default to checked (show localhost)
+    SendMessage(g_hwndCheckLocalhost, BM_SETCHECK, BST_CHECKED, 0);
+
     int listY = btnY + btnHeight + btnMargin;
     g_hwndListView = CreateWindowEx(
         0,
@@ -287,9 +306,14 @@ void InitializeListView(void) {
 void gui_add_connection(const NetworkConnection* conn) {
     if (!g_hwndListView || !conn) return;
 
-    // Apply filter
+    // Apply direction filter
     if (g_filter != CONN_UNKNOWN && conn->direction != g_filter) {
-        return; // Skip this connection based on filter
+        return; // Skip this connection based on direction filter
+    }
+
+    // Apply localhost filter
+    if (!g_show_localhost && conn->is_localhost) {
+        return; // Skip localhost connections if filter is disabled
     }
 
     // Prepare connection data
@@ -619,6 +643,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 case ID_RADIO_ALL:
                     g_filter = CONN_UNKNOWN; // Use UNKNOWN as "all"
                     LOG_INFO("Filter set to: All");
+                    RefreshListViewWithFilter();
+                    break;
+
+                case ID_CHECK_LOCALHOST:
+                    g_show_localhost = (SendMessage(g_hwndCheckLocalhost, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                    LOG_INFO("Localhost filter: %s", g_show_localhost ? "Enabled" : "Disabled");
                     RefreshListViewWithFilter();
                     break;
             }
