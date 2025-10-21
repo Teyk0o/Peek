@@ -1,0 +1,86 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v1.0.0, v2.1.3, etc.
+
+permissions:
+  contents: write  # Required to create releases
+
+jobs:
+  build-windows:
+    name: Build Windows Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Configure CMake (Release)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -G "MinGW Makefiles"
+
+      - name: Build
+        run: |
+          cmake --build build --config Release -j 4
+
+      - name: Package executable
+        run: |
+          mkdir -p release-package
+          cp build/Peek.exe release-package/
+          cp -r assets release-package/
+          echo "PEEK - Network Monitor" > release-package/README.txt
+          echo "" >> release-package/README.txt
+          echo "Version: ${{ github.ref_name }}" >> release-package/README.txt
+          echo "Built on: $(date)" >> release-package/README.txt
+          echo "" >> release-package/README.txt
+          echo "Usage: Simply run Peek.exe" >> release-package/README.txt
+          echo "The application monitors network connections in real-time." >> release-package/README.txt
+        shell: bash
+
+      - name: Create ZIP archive
+        run: |
+          cd release-package
+          7z a ../Peek-${{ github.ref_name }}-Windows-x64.zip *
+        shell: bash
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            Peek-${{ github.ref_name }}-Windows-x64.zip
+            build/Peek.exe
+          body: |
+            ## PEEK - Network Monitor ${{ github.ref_name }}
+
+            ### Features
+            - Real-time network connection monitoring
+            - Connection direction detection (Inbound/Outbound)
+            - Localhost connection filtering
+            - Connection grouping by process and endpoint
+            - Visual flash effects for new connections
+            - Clean light theme UI
+
+            ### Installation
+            1. Download `Peek-${{ github.ref_name }}-Windows-x64.zip`
+            2. Extract the archive
+            3. Run `Peek.exe`
+
+            ### Requirements
+            - Windows 10/11
+            - x64 architecture
+
+            ### Files
+            - `Peek-${{ github.ref_name }}-Windows-x64.zip`: Complete package with assets
+            - `Peek.exe`: Standalone executable
+
+            ---
+            🤖 Built automatically with GitHub Actions
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
