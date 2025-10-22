@@ -37,6 +37,20 @@ jobs:
         env:
           PEEK_CERT_PASSWORD: ${{ secrets.PEEK_CERT_PASSWORD }}
 
+      - name: Sign executable
+        run: |
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits" -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if ($signtool) {
+            Write-Host "Found signtool at: $signtool"
+            & $signtool sign /f "PeekCertificate.pfx" /p "$env:PEEK_CERT_PASSWORD" /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v "build/Peek.exe"
+          } else {
+            Write-Error "signtool.exe not found"
+            exit 1
+          }
+        shell: pwsh
+        env:
+          PEEK_CERT_PASSWORD: ${{ secrets.PEEK_CERT_PASSWORD }}
+
       - name: Verify signature
         run: |
           Get-AuthenticodeSignature build/Peek.exe | Format-List
