@@ -2,6 +2,13 @@
 
 ![Banner Placeholder](assets/banner.png)
 
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://www.microsoft.com/windows)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Teyk0o/Peek/release.yml?branch=main)](https://github.com/Teyk0o/Peek/actions)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F71-success)](https://www.virustotal.com/gui/file/9298c1aab0d267c9126d32834e81663c30b3eae5d9cd95672711631449a58fe6)
+[![Language](https://img.shields.io/badge/language-C-blue.svg)](https://en.wikipedia.org/wiki/C_(programming_language))
+[![Release](https://img.shields.io/github/v/release/Teyk0o/Peek)](https://github.com/Teyk0o/Peek/releases)
+
 **A real-time network connection monitor for Windows, built in pure C with the Win32 API.**
 Peek lets you instantly see which processes are talking to which destinations — inbound or outbound — in a clean, animated, and filterable interface.
 
