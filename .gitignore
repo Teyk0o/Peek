@@ -149,3 +149,14 @@ Doxyfile.bak
 *.bak
 *.backup
 *~
+
+# ========================================
+# Code signing certificates (NEVER COMMIT!)
+# ========================================
+*.pfx
+*.p12
+*.cer
+*.crt
+*.key
+*_base64.txt
+certificate*.txt

@@ -47,3 +47,31 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
         )
     endif()
 endif ()
+
+# Code signing configuration for Release builds
+if(WIN32 AND CMAKE_BUILD_TYPE MATCHES Release)
+    find_program(SIGNTOOL signtool PATHS
+        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64"
+        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22000.0/x64"
+        "C:/Program Files (x86)/Windows Kits/10/bin/x64"
+    )
+
+    if(SIGNTOOL)
+        # Sign the executable after build
+        add_custom_command(TARGET Peek POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "Signing Peek.exe with certificate..."
+            COMMAND ${SIGNTOOL} sign /f "${CMAKE_SOURCE_DIR}/PeekCertificate.pfx"
+                    /p "$ENV{PEEK_CERT_PASSWORD}"
+                    /tr http://timestamp.digicert.com
+                    /td sha256
+                    /fd sha256
+                    /v
+                    "$<TARGET_FILE:Peek>"
+            COMMENT "Code signing Peek.exe"
+            VERBATIM
+        )
+        message(STATUS "Code signing enabled - using PeekCertificate.pfx")
+    else()
+        message(WARNING "signtool.exe not found - executable will not be signed")
+    endif()
+endif()

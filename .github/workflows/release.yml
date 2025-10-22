@@ -20,13 +20,27 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
+      - name: Decode certificate
+        run: |
+          echo "${{ secrets.PEEK_CERTIFICATE_BASE64 }}" | base64 --decode > PeekCertificate.pfx
+        shell: bash
+
       - name: Configure CMake (Release)
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -G "MinGW Makefiles"
+        env:
+          PEEK_CERT_PASSWORD: ${{ secrets.PEEK_CERT_PASSWORD }}
 
       - name: Build
         run: |
           cmake --build build --config Release -j 4
+        env:
+          PEEK_CERT_PASSWORD: ${{ secrets.PEEK_CERT_PASSWORD }}
+
+      - name: Verify signature
+        run: |
+          Get-AuthenticodeSignature build/Peek.exe | Format-List
+        shell: pwsh
 
       - name: Package executable
         run: |
@@ -40,6 +54,12 @@ jobs:
           echo "" >> release-package/README.txt
           echo "Usage: Simply run Peek.exe" >> release-package/README.txt
           echo "The application monitors network connections in real-time." >> release-package/README.txt
+        shell: bash
+
+      - name: Cleanup certificate
+        if: always()
+        run: |
+          rm -f PeekCertificate.pfx
         shell: bash
 
       - name: Create ZIP archive
