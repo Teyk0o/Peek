@@ -21,6 +21,7 @@
 #define ID_RADIO_OUTBOUND 1009
 #define ID_RADIO_INBOUND 1010
 #define ID_CHECK_LOCALHOST 1011
+#define ID_COMBO_PROTOCOL 1012
 
 #define FLASH_DURATION_MS 1500
 #define MAX_HIGHLIGHTED_ITEMS 100
@@ -40,10 +41,14 @@ static HWND g_hwndRadioAll = NULL;
 static HWND g_hwndRadioOutbound = NULL;
 static HWND g_hwndRadioInbound = NULL;
 static HWND g_hwndCheckLocalhost = NULL;
+static HWND g_hwndComboProtocol = NULL;
 static HINSTANCE g_hInstance = NULL;
 static BOOL g_monitoring = FALSE;
 static ConnectionDirection g_filter = CONN_OUTBOUND; // Default to outbound only
 static BOOL g_show_localhost = TRUE; // Default to show localhost connections
+
+// Protocol filter: -1 = All, PROTO_TCP = TCP only, PROTO_UDP = UDP only
+static int g_protocol_filter = -1; // Default to show all protocols
 
 static HighlightedItem g_highlighted_items[MAX_HIGHLIGHTED_ITEMS];
 static int g_highlighted_count = 0;
@@ -225,6 +230,32 @@ void CreateControls(HWND hwnd) {
     // Set default to checked (show localhost)
     SendMessage(g_hwndCheckLocalhost, BM_SETCHECK, BST_CHECKED, 0);
 
+    // Protocol filter ComboBox
+    int comboX = checkX + 140;
+    CreateWindowW(L"STATIC", L"Protocol:",
+        WS_CHILD | WS_VISIBLE,
+        comboX, btnY + 8, 60, 20,
+        hwnd, NULL, g_hInstance, NULL);
+
+    g_hwndComboProtocol = CreateWindowW(
+        L"COMBOBOX",
+        NULL,
+        WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+        comboX + 65, btnY + 5, 80, 100,
+        hwnd,
+        (HMENU)ID_COMBO_PROTOCOL,
+        g_hInstance,
+        NULL
+    );
+
+    // Add items to ComboBox
+    SendMessageW(g_hwndComboProtocol, CB_ADDSTRING, 0, (LPARAM)L"All");
+    SendMessageW(g_hwndComboProtocol, CB_ADDSTRING, 0, (LPARAM)L"TCP");
+    SendMessageW(g_hwndComboProtocol, CB_ADDSTRING, 0, (LPARAM)L"UDP");
+
+    // Set default to "All"
+    SendMessageW(g_hwndComboProtocol, CB_SETCURSEL, 0, 0);
+
     int listY = btnY + btnHeight + btnMargin;
     g_hwndListView = CreateWindowEx(
         0,
@@ -278,42 +309,48 @@ void InitializeListView(void) {
     lvc.fmt = LVCFMT_CENTER;
     ListView_InsertColumn(g_hwndListView, 1, &lvc);
 
+    // Protocol column
+    lvc.pszText = L"Proto";
+    lvc.cx = 55;
+    lvc.fmt = LVCFMT_CENTER;
+    ListView_InsertColumn(g_hwndListView, 2, &lvc);
+
     // Remote Address column
     lvc.pszText = L"Remote Address";
-    lvc.cx = 150;
+    lvc.cx = 200;
     lvc.fmt = LVCFMT_LEFT;
-    ListView_InsertColumn(g_hwndListView, 2, &lvc);
+    ListView_InsertColumn(g_hwndListView, 3, &lvc);
 
     // Remote Port column
     lvc.pszText = L"Port";
     lvc.cx = 60;
-    ListView_InsertColumn(g_hwndListView, 3, &lvc);
+    ListView_InsertColumn(g_hwndListView, 4, &lvc);
 
     // Local Address column
     lvc.pszText = L"Local Address";
-    lvc.cx = 150;
-    ListView_InsertColumn(g_hwndListView, 4, &lvc);
+    lvc.cx = 200;
+    ListView_InsertColumn(g_hwndListView, 5, &lvc);
 
     // Local Port column
     lvc.pszText = L"Local Port";
     lvc.cx = 80;
-    ListView_InsertColumn(g_hwndListView, 5, &lvc);
+    ListView_InsertColumn(g_hwndListView, 6, &lvc);
 
     // Process column
     lvc.pszText = L"Process";
     lvc.cx = 150;
-    ListView_InsertColumn(g_hwndListView, 6, &lvc);
+    ListView_InsertColumn(g_hwndListView, 7, &lvc);
 
     // PID column
     lvc.pszText = L"PID";
     lvc.cx = 70;
-    ListView_InsertColumn(g_hwndListView, 7, &lvc);
+    ListView_InsertColumn(g_hwndListView, 8, &lvc);
 
     // Count column
     lvc.pszText = L"Count";
     lvc.cx = 60;
     lvc.fmt = LVCFMT_CENTER;
-    ListView_InsertColumn(g_hwndListView, 8, &lvc);
+    ListView_InsertColumn(g_hwndListView, 9, &lvc);
 }
 
 void gui_add_connection(const NetworkConnection* conn) {
@@ -329,19 +366,35 @@ void gui_add_connection(const NetworkConnection* conn) {
         return; // Skip localhost connections if filter is disabled
     }
 
+    // Apply protocol filter
+    if (g_protocol_filter != -1 && conn->protocol != g_protocol_filter) {
+        return; // Skip this connection based on protocol filter
+    }
+
     // Prepare connection data
-    char remote_ip[32];
-    network_format_ip(conn->remote_addr, remote_ip, sizeof(remote_ip));
-    wchar_t w_remote_ip[32];
-    MultiByteToWideChar(CP_ACP, 0, remote_ip, -1, w_remote_ip, 32);
+    char remote_ip[64];
+    wchar_t w_remote_ip[64];
+    char local_ip[64];
+    wchar_t w_local_ip[64];
+
+    // Format IP addresses based on version
+    if (conn->ip_version == IP_V4) {
+        network_format_ip(conn->remote_addr, remote_ip, sizeof(remote_ip));
+        network_format_ip(conn->local_addr, local_ip, sizeof(local_ip));
+    } else { // IPv6
+        network_format_ipv6(conn->remote_addr_v6, remote_ip, sizeof(remote_ip));
+        network_format_ipv6(conn->local_addr_v6, local_ip, sizeof(local_ip));
+    }
+
+    MultiByteToWideChar(CP_ACP, 0, remote_ip, -1, w_remote_ip, 64);
+    MultiByteToWideChar(CP_ACP, 0, local_ip, -1, w_local_ip, 64);
 
     wchar_t remote_port[16];
-    swprintf(remote_port, 16, L"%lu", conn->remote_port);
-
-    char local_ip[32];
-    network_format_ip(conn->local_addr, local_ip, sizeof(local_ip));
-    wchar_t w_local_ip[32];
-    MultiByteToWideChar(CP_ACP, 0, local_ip, -1, w_local_ip, 32);
+    if (conn->remote_port != 0) {
+        swprintf(remote_port, 16, L"%lu", conn->remote_port);
+    } else {
+        wcscpy(remote_port, L"-");
+    }
 
     wchar_t local_port[16];
     swprintf(local_port, 16, L"%lu", conn->local_port);
@@ -352,24 +405,36 @@ void gui_add_connection(const NetworkConnection* conn) {
     wchar_t pid_str[16];
     swprintf(pid_str, 16, L"%lu", conn->pid);
 
-    const wchar_t* direction_str = (conn->direction == CONN_OUTBOUND) ? L"OUT" :
-                                    (conn->direction == CONN_INBOUND) ? L"IN" : L"?";
+    wchar_t direction_str[4];
+    if (conn->direction == CONN_OUTBOUND) {
+        wcscpy(direction_str, L"OUT");
+    } else if (conn->direction == CONN_INBOUND) {
+        wcscpy(direction_str, L"IN");
+    } else {
+        wcscpy(direction_str, L"?");
+    }
 
-    // Check if this connection already exists (same process, remote_addr, remote_port)
+    wchar_t protocol_str[8];
+    wcscpy(protocol_str, (conn->protocol == PROTO_TCP) ? L"TCP" : L"UDP");
+
+    // Check if this connection already exists (same process, protocol, remote_addr, remote_port)
     int item_count = ListView_GetItemCount(g_hwndListView);
     for (int i = 0; i < item_count; i++) {
         wchar_t existing_process[MAX_PROCESS_NAME];
-        wchar_t existing_remote_ip[32];
+        wchar_t existing_protocol[16];
+        wchar_t existing_remote_ip[64];
         wchar_t existing_remote_port[16];
         wchar_t existing_count[16];
 
-        ListView_GetItemText(g_hwndListView, i, 6, existing_process, MAX_PROCESS_NAME);
-        ListView_GetItemText(g_hwndListView, i, 2, existing_remote_ip, 32);
-        ListView_GetItemText(g_hwndListView, i, 3, existing_remote_port, 16);
-        ListView_GetItemText(g_hwndListView, i, 8, existing_count, 16);
+        ListView_GetItemText(g_hwndListView, i, 7, existing_process, MAX_PROCESS_NAME);
+        ListView_GetItemText(g_hwndListView, i, 2, existing_protocol, 16);
+        ListView_GetItemText(g_hwndListView, i, 3, existing_remote_ip, 64);
+        ListView_GetItemText(g_hwndListView, i, 4, existing_remote_port, 16);
+        ListView_GetItemText(g_hwndListView, i, 9, existing_count, 16);
 
-        // If same process and same remote endpoint, increment count
+        // If same process, protocol and same remote endpoint, increment count
         if (wcscmp(existing_process, w_process) == 0 &&
+            wcscmp(existing_protocol, protocol_str) == 0 &&
             wcscmp(existing_remote_ip, w_remote_ip) == 0 &&
             wcscmp(existing_remote_port, remote_port) == 0) {
 
@@ -383,7 +448,7 @@ void gui_add_connection(const NetworkConnection* conn) {
             // Update count
             wchar_t new_count[16];
             swprintf(new_count, 16, L"%d", count);
-            ListView_SetItemText(g_hwndListView, i, 8, new_count);
+            ListView_SetItemText(g_hwndListView, i, 9, new_count);
 
             // Update timestamp to the latest
             wchar_t time_str[32];
@@ -415,13 +480,14 @@ void gui_add_connection(const NetworkConnection* conn) {
     int index = ListView_InsertItem(g_hwndListView, &lvi);
 
     ListView_SetItemText(g_hwndListView, index, 1, direction_str);
-    ListView_SetItemText(g_hwndListView, index, 2, w_remote_ip);
-    ListView_SetItemText(g_hwndListView, index, 3, remote_port);
-    ListView_SetItemText(g_hwndListView, index, 4, w_local_ip);
-    ListView_SetItemText(g_hwndListView, index, 5, local_port);
-    ListView_SetItemText(g_hwndListView, index, 6, w_process);
-    ListView_SetItemText(g_hwndListView, index, 7, pid_str);
-    ListView_SetItemText(g_hwndListView, index, 8, L"1");
+    ListView_SetItemText(g_hwndListView, index, 2, protocol_str);
+    ListView_SetItemText(g_hwndListView, index, 3, w_remote_ip);
+    ListView_SetItemText(g_hwndListView, index, 4, remote_port);
+    ListView_SetItemText(g_hwndListView, index, 5, w_local_ip);
+    ListView_SetItemText(g_hwndListView, index, 6, local_port);
+    ListView_SetItemText(g_hwndListView, index, 7, w_process);
+    ListView_SetItemText(g_hwndListView, index, 8, pid_str);
+    ListView_SetItemText(g_hwndListView, index, 9, L"1");
 
     // Trigger highlight effect for new connection
     AddHighlightedItem(index);
@@ -627,6 +693,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         case WM_COMMAND: {
             int wmId = LOWORD(wParam);
+            int wmEvent = HIWORD(wParam);
 
             switch (wmId) {
                 case ID_BTN_START:
@@ -664,6 +731,27 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                     LOG_INFO("Localhost filter: %s", g_show_localhost ? "Enabled" : "Disabled");
                     RefreshListViewWithFilter();
                     break;
+
+                case ID_COMBO_PROTOCOL:
+                    if (wmEvent == CBN_SELCHANGE) {
+                        int sel = SendMessageW(g_hwndComboProtocol, CB_GETCURSEL, 0, 0);
+                        switch (sel) {
+                            case 0: // All
+                                g_protocol_filter = -1;
+                                LOG_INFO("Protocol filter: All");
+                                break;
+                            case 1: // TCP
+                                g_protocol_filter = PROTO_TCP;
+                                LOG_INFO("Protocol filter: TCP");
+                                break;
+                            case 2: // UDP
+                                g_protocol_filter = PROTO_UDP;
+                                LOG_INFO("Protocol filter: UDP");
+                                break;
+                        }
+                        RefreshListViewWithFilter();
+                    }
+                    break;
             }
             return 0;
         }
@@ -677,11 +765,19 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                     for (int i = 0; i < count; i++) {
                         gui_add_connection(&new_conns[i]);
 
-                        char remote_ip[32], local_ip[32];
-                        network_format_ip(new_conns[i].remote_addr, remote_ip, sizeof(remote_ip));
-                        network_format_ip(new_conns[i].local_addr, local_ip, sizeof(local_ip));
+                        char remote_ip[64], local_ip[64];
+                        if (new_conns[i].ip_version == IP_V4) {
+                            network_format_ip(new_conns[i].remote_addr, remote_ip, sizeof(remote_ip));
+                            network_format_ip(new_conns[i].local_addr, local_ip, sizeof(local_ip));
+                        } else {
+                            network_format_ipv6(new_conns[i].remote_addr_v6, remote_ip, sizeof(remote_ip));
+                            network_format_ipv6(new_conns[i].local_addr_v6, local_ip, sizeof(local_ip));
+                        }
 
-                        LOG_SUCCESS("NEW CONNECTION: %s:%lu -> %s:%lu | %s (PID: %lu)",
+                        const char* proto_str = (new_conns[i].protocol == PROTO_TCP) ? "TCP" : "UDP";
+
+                        LOG_SUCCESS("NEW CONNECTION [%s]: %s:%lu -> %s:%lu | %s (PID: %lu)",
+                            proto_str,
                             remote_ip, new_conns[i].remote_port,
                             local_ip, new_conns[i].local_port,
                             new_conns[i].process_name, new_conns[i].pid);

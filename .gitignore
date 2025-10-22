@@ -133,6 +133,7 @@ $RECYCLE.BIN/
 html/
 latex/
 Doxyfile.bak
+.claude/
 
 # ========================================
 # Archives

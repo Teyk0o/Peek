@@ -18,7 +18,7 @@ Peek lets you instantly see which processes are talking to which destinations �
 
 ## Overview
 
-**PEEK** is a lightweight, open-source network monitoring tool written in C. It provides real-time visibility into TCP connections established on your Windows machine, with intelligent filtering and process association.
+**PEEK** is a lightweight, open-source network monitoring tool written in C. It provides real-time visibility into TCP and UDP connections (both IPv4 and IPv6) established on your Windows machine, with intelligent filtering and process association.
 
 It aims to fill the gap between heavy tools like Wireshark and limited CLI utilities like `netstat`, offering a **modern, GUI-driven experience** without sacrificing performance.
 
@@ -50,12 +50,13 @@ Peek/
 
 ### **1. Network Module (`network.c/h`)**
 
-Responsible for querying Windows APIs to fetch active TCP connections and determine their direction (INBOUND / OUTBOUND).
+Responsible for querying Windows APIs to fetch active TCP/UDP connections (IPv4 & IPv6) and determine their direction (INBOUND / OUTBOUND).
 
 Key APIs:
 
-* `GetExtendedTcpTable()` for active and listening sockets
+* `GetExtendedTcpTable()` / `GetExtendedUdpTable()` for active and listening sockets (IPv4 & IPv6)
 * `OpenProcess()` / `QueryFullProcessImageNameA()` for process names
+* `EnumProcessModules()` / `GetModuleBaseNameA()` for enhanced process name resolution
 
 PEEK introduces a precise **direction detection algorithm**:
 
@@ -64,6 +65,12 @@ PEEK introduces a precise **direction detection algorithm**:
 
     * If it matches a listening port → **INBOUND**
     * Otherwise → **OUTBOUND**
+
+**Enhanced process name resolution:**
+* Multiple access level attempts (from limited to full access)
+* Fallback to PSAPI for system processes
+* Special handling for System (PID 4) and System Idle (PID 0)
+* Administrator privilege detection with user warning
 
 It also tracks connection stats and maintains a cached table of seen connections for efficient updates.
 
@@ -75,25 +82,29 @@ Handles the entire Win32 user interface: ListView, filters, buttons, and animati
 
 **Features:**
 
-* Real-time connection table with direction indicators
+* Real-time connection table with direction and protocol indicators
 * Filtering by direction (Inbound / Outbound / All)
+* Filtering by protocol (TCP / UDP / All) with dropdown selector
 * Toggle for localhost traffic visibility
-* Smart grouping by process and endpoint
+* Smart grouping by process, protocol, and endpoint
 * Flash animation for new or updated connections
+* IPv6 address display support
 
 Visual layout:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ [Start] [Stop] [Clear]  (○)Out (○)In (○)All  [✓]Show Localhost │
-├─────────────────────────────────────────────────────────────────┤
-│ Time   │Dir│Remote Addr     │Port │Local Addr│LPort│Process│Cnt│
-├────────┼───┼────────────────┼─────┼──────────┼─────┼───────┼───┤
-│16:54:41│OUT│142.250.200.46  │443  │192.168.1 │54123│chrome │ 1 │
-│16:54:42│IN │203.45.67.89    │52341│192.168.1 │80   │nginx  │ 3 │
-└────────┴───┴────────────────┴─────┴──────────┴─────┴───────┴───┘
-│ Monitoring │ New: 12 │ Active: 45 │ Total: 143                  │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ [Start] [Stop] [Clear]  (○)Out (○)In (○)All  [✓]Show Localhost Protocol:[All▼]│
+├──────────────────────────────────────────────────────────────────────────┤
+│ Time   │Dir│Proto│Remote Addr          │Port │Local Addr│LPort│Process│Cnt│
+├────────┼───┼─────┼─────────────────────┼─────┼──────────┼─────┼───────┼───┤
+│16:54:41│OUT│TCP  │142.250.200.46       │443  │192.168.1 │54123│chrome │ 1 │
+│16:54:42│IN │TCP  │203.45.67.89         │52341│192.168.1 │80   │nginx  │ 3 │
+│16:54:43│?  │UDP  │0.0.0.0              │-    │0.0.0.0   │53   │dns    │ 1 │
+│16:54:44│OUT│TCP  │2001:4860:4860::8888 │443  │fe80::1   │54200│firefox│ 1 │
+└────────┴───┴─────┴─────────────────────┴─────┴──────────┴─────┴───────┴───┘
+│ Monitoring │ New: 12 │ Active: 45 │ Total: 143                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -119,6 +130,12 @@ Handles initialization and orchestration of all subsystems.
 ```c
 int WINAPI wWinMain(HINSTANCE hInstance, ...) {
     logger_init();
+
+    // Check administrator privileges and warn user if not elevated
+    if (!IsRunningAsAdmin()) {
+        // Show warning popup with option to continue or exit
+    }
+
     if (network_init() != 0) return 1;
     gui_init(hInstance);
     gui_create_window(hInstance);
@@ -134,9 +151,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, ...) {
 
 | API                         | Purpose                                   |
 | --------------------------- | ----------------------------------------- |
-| GetExtendedTcpTable         | Fetch TCP connections and listening ports |
+| GetExtendedTcpTable         | Fetch TCP connections (IPv4 & IPv6)       |
+| GetExtendedUdpTable         | Fetch UDP sockets (IPv4 & IPv6)           |
 | OpenProcess                 | Open handle to process                    |
 | QueryFullProcessImageNameA  | Retrieve process executable name          |
+| EnumProcessModules          | Enumerate process modules                 |
+| GetModuleBaseNameA          | Get module base name (fallback)           |
+| CheckTokenMembership        | Verify administrator privileges           |
 | CreateWindowEx / ListView_* | GUI creation and updates                  |
 | SetTimer / GetTickCount     | Polling & animation timing                |
 | LoadIcon / LoadImage        | Load custom icons                         |
@@ -144,8 +165,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, ...) {
 Linked Libraries:
 
 * `ws2_32` – Winsock API
-* `iphlpapi` – IP Helper API
-* `comctl32` – Common Controls
+* `iphlpapi` – IP Helper API (TCP/UDP tables)
+* `psapi` – Process Status API (module enumeration)
+* `comctl32` – Common Controls (ListView, ComboBox)
 
 ---
 
@@ -192,10 +214,10 @@ Optimized for low overhead via static arrays, caching, and minimal redraw logic.
 
 | Mode          | Access level                      |
 | ------------- | --------------------------------- |
-| Standard User | Own processes only                |
-| Administrator | System-wide visibility (all PIDs) |
+| Standard User | Own processes + limited system visibility |
+| Administrator | Full system-wide visibility (all PIDs)    |
 
-PEEK runs fine without admin rights, but with limited visibility.
+PEEK runs without admin rights, but some system process names may appear as `[System] PID:xxx`. For full functionality, run as administrator. PEEK will show a warning popup if not elevated, with the option to continue or exit.
 
 ---
 
@@ -213,7 +235,10 @@ PEEK runs fine without admin rights, but with limited visibility.
 
 | Feature            | **PEEK** | TCPView   | Netstat | Wireshark  |
 | ------------------ | -------- | --------- | ------- | ---------- |
+| IPv6 support       | ✅        | ✅         | ✅       | ✅          |
+| UDP support        | ✅        | ✅         | ✅       | ✅          |
 | Accurate direction | ✅        | ❌         | ❌       | ⚠️ Complex |
+| Protocol filtering | ✅        | ❌         | ❌       | ✅          |
 | Smart grouping     | ✅        | ❌         | ❌       | ❌          |
 | Live filters       | ✅        | ⚠️        | ❌       | ✅          |
 | UI                 | ✅ Modern | ⚠️ Legacy | ❌ CLI   | ⚠️ Heavy   |
@@ -223,44 +248,59 @@ PEEK runs fine without admin rights, but with limited visibility.
 
 ## Known Limitations
 
-* IPv4 only (AF_INET)
-* TCP only (no UDP/ICMP)
 * Windows-only (Win32 APIs)
+* UDP remote endpoints not tracked (connectionless protocol)
+* No ICMP/RAW socket support
 * No historical graphing or persistence
+* Requires admin rights for full process visibility
 
 ---
 
 ## Future Roadmap
 
-**Short term:**
+**✅ Completed (v1.2.0):**
 
-* IPv6 & UDP support
-* IP/domain filter
-* Export to CSV
+* ~~IPv6 support~~ ✅
+* ~~UDP support~~ ✅
+* ~~Protocol filtering (TCP/UDP/All)~~ ✅
+* ~~Enhanced process name resolution~~ ✅
+* ~~Administrator privilege detection~~ ✅
+
+**Short term (v1.3.x):**
+
+* IP/domain filter with search
+* Export to CSV/JSON
 * Dark mode toggle
+* Connection statistics dashboard
 
-**Mid term:**
+**Mid term (v1.4.x - v1.5.x):**
 
-* Real-time bandwidth graphs
-* Anomaly alerts
+* Real-time bandwidth graphs per connection
+* Country/ASN lookup (GeoIP)
+* Anomaly detection alerts
 * Persistent stats (SQLite)
 
-**Long term:**
+**Long term (v2.x):**
 
-* Remote monitoring
+* Remote monitoring capability
 * VirusTotal IP lookup integration
 * Plugin system for extensions
+* Packet capture integration
 
 ---
 
 ## Highlights
 
-* Precise connection direction detection (via TCP_TABLE_OWNER_PID_LISTENER)
-* Smart connection grouping (reduce noise by up to 90%)
-* Smooth Win32 UI animations (20 FPS)
-* Fully automated CI/CD via GitHub Actions
-* 100% pure C, zero dependencies
-* Portable single `.exe`
+* **IPv4 & IPv6 support** for TCP and UDP protocols
+* **Precise connection direction detection** (via TCP_TABLE_OWNER_PID_LISTENER)
+* **Protocol filtering** (TCP/UDP/All) with real-time switching
+* **Enhanced process resolution** with multi-level access attempts
+* **Admin privilege detection** with user-friendly warnings
+* **Smart connection grouping** (reduce noise by up to 90%)
+* **Smooth Win32 UI animations** (20 FPS flash effects)
+* **Fully automated CI/CD** via GitHub Actions
+* **100% pure C**, zero external dependencies
+* **Portable single `.exe`** (~100KB)
 
 ---
 
