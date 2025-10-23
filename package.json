@@ -1,0 +1,28 @@
+{
+  "name": "peek-security-monitor",
+  "version": "2.0.0-alpha.1",
+  "description": "Professional Network Security Monitor for Windows",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --workspace=frontend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build:daemon": "cmake -B build-daemon -DCMAKE_BUILD_TYPE=Release ./daemon && cmake --build build-daemon --config Release",
+    "build:ui": "cmake -B build-ui -DCMAKE_BUILD_TYPE=Release ./ui && cmake --build build-ui --config Release",
+    "build:updater": "cmake -B build-updater -DCMAKE_BUILD_TYPE=Release ./updater && cmake --build build-updater --config Release",
+    "build:installer": "makensis installer/Peek.nsi",
+    "build": "npm run build:frontend && npm run build:daemon && npm run build:ui && npm run build:updater",
+    "sign": "node scripts/sign-binaries.js",
+    "package": "node scripts/package.js",
+    "release": "npm run build && npm run sign && npm run package",
+    "clean": "rimraf build-* frontend/dist && npm run clean --workspace=frontend"
+  },
+  "workspaces": [
+    "frontend"
+  ],
+  "devDependencies": {
+    "rimraf": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

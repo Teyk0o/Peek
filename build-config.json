@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0-alpha.1",
+  "release_date": "2025-10-23",
+  "app_name": "Peek",
+  "app_description": "Professional Network Security Monitor for Windows",
+  "app_author": "Théo V. / Teyko",
+  "app_website": "https://github.com/Teyk0o/Peek",
+  "update_server": "https://releases.peek.local",
+  "minimum_windows_version": "10.0.17763",
+  "require_admin": false,
+  "auto_start_service": true,
+  "features": {
+    "ipv4": true,
+    "ipv6": true,
+    "tcp_protocol": true,
+    "udp_protocol": true,
+    "trust_verification": true,
+    "auto_update": true,
+    "statistics": true,
+    "dark_mode": false
+  },
+  "signing": {
+    "enabled": true,
+    "certificate_subject": "CN=Peek, O=Organization, C=US",
+    "timestamp_server": "http://timestamp.digicert.com"
+  },
+  "build_metadata": {
+    "commit": "auto-generated",
+    "build_number": 0,
+    "ci_platform": "GitHub Actions"
+  }
+}

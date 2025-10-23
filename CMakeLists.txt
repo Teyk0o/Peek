@@ -1,56 +1,45 @@
 cmake_minimum_required(VERSION 3.27)
-project(Peek C)
+project(Peek C CXX)
 
+# Project-wide settings
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
 
 if(WIN32)
     add_compile_definitions(UNICODE _UNICODE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -municode")
-endif ()
-
-set(SOURCES
-    main.c
-    network.c
-    gui.c
-    logger.c
-)
-
-set(HEADERS
-    network.h
-    gui.h
-    logger.h
-    resource.h
-)
-
-# Add Windows resource file for icon
-if(WIN32)
-    enable_language(RC)
-    set(RESOURCES app.rc)
 endif()
 
-add_executable(Peek WIN32 ${SOURCES} ${HEADERS} ${RESOURCES})
+# Load version from build-config.json
+if(EXISTS "${CMAKE_SOURCE_DIR}/build-config.json")
+    file(READ "${CMAKE_SOURCE_DIR}/build-config.json" BUILD_CONFIG_JSON)
+    string(JSON PEEK_VERSION GET "${BUILD_CONFIG_JSON}" version)
+    string(JSON PEEK_APP_NAME GET "${BUILD_CONFIG_JSON}" app_name)
+    message(STATUS "Peek ${PEEK_VERSION} - ${PEEK_APP_NAME}")
+else()
+    set(PEEK_VERSION "2.0.0-alpha.1")
+    set(PEEK_APP_NAME "Peek")
+    message(WARNING "build-config.json not found, using default version")
+endif()
 
-target_link_libraries(Peek
-    ws2_32    # Winsock
-    iphlpapi  # IP Helper API
-    comctl32  # Common Controls
-    psapi     # Process Status API
-    crypt32   # Cryptography API (DPAPI, SHA256, HMAC)
-    wintrust  # WinVerifyTrust API
-    shell32   # SHGetFolderPath
-)
+# Define version macros for C/C++
+add_compile_definitions(PEEK_VERSION="${PEEK_VERSION}")
+add_compile_definitions(PEEK_APP_NAME="${PEEK_APP_NAME}")
 
-if(CMAKE_BUILD_TYPE MATCHES Debug)
-    if(MINGW)
-        set_target_properties(Peek PROPERTIES
-            LINK_FLAGS "-Wl,--subsystem,console"
-        )
-    else()
-        set_target_properties(Peek PROPERTIES
-            LINK_FLAGS "/SUBSYSTEM:CONSOLE"
-        )
-    endif()
-endif ()
+# Include shared headers
+include_directories("${CMAKE_SOURCE_DIR}/shared")
+
+# Sub-projects
+message(STATUS "Adding sub-projects...")
+
+# UI Host (peek.exe) - Win32 + WebView2
+add_subdirectory(ui)
+
+# Daemon (peekd.exe) - Windows Service
+add_subdirectory(daemon)
+
+# Updater (updater.exe)
+add_subdirectory(updater)
 
 # Code signing configuration for Release builds
 if(WIN32 AND CMAKE_BUILD_TYPE MATCHES Release)
@@ -61,21 +50,43 @@ if(WIN32 AND CMAKE_BUILD_TYPE MATCHES Release)
     )
 
     if(SIGNTOOL)
-        # Sign the executable after build
-        add_custom_command(TARGET Peek POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E echo "Signing Peek.exe with certificate..."
-            COMMAND ${SIGNTOOL} sign /f "${CMAKE_SOURCE_DIR}/PeekCertificate.pfx"
-                    /p "$ENV{PEEK_CERT_PASSWORD}"
-                    /tr http://timestamp.digicert.com
-                    /td sha256
-                    /fd sha256
-                    /v
-                    "$<TARGET_FILE:Peek>"
-            COMMENT "Code signing Peek.exe"
-            VERBATIM
-        )
-        message(STATUS "Code signing enabled - using PeekCertificate.pfx")
+        message(STATUS "Code signing enabled (signtool found)")
     else()
-        message(WARNING "signtool.exe not found - executable will not be signed")
+        message(WARNING "signtool.exe not found - binaries will not be signed")
     endif()
 endif()
+
+# Custom build target for frontend
+add_custom_target(frontend_build
+    COMMAND npm --prefix "${CMAKE_SOURCE_DIR}/frontend" run build
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/frontend"
+    COMMENT "Building React frontend..."
+)
+
+# Ensure frontend is built first
+add_dependencies(peek frontend_build)
+
+# Custom target for packaging
+add_custom_target(package
+    COMMAND node "${CMAKE_SOURCE_DIR}/scripts/package.js"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    COMMENT "Packaging Peek for distribution..."
+)
+
+# Output summary
+message(STATUS "")
+message(STATUS "========================================")
+message(STATUS "Peek Build Configuration")
+message(STATUS "========================================")
+message(STATUS "Version: ${PEEK_VERSION}")
+message(STATUS "Platform: Windows")
+message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Targets: peek (UI), peekd (Daemon), updater")
+message(STATUS "")
+message(STATUS "Build with:")
+message(STATUS "  cmake --build build --config Release")
+message(STATUS "")
+message(STATUS "Package with:")
+message(STATUS "  npm run package")
+message(STATUS "========================================")
+message(STATUS "")

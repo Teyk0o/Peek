@@ -161,3 +161,31 @@ Doxyfile.bak
 *.key
 *_base64.txt
 certificate*.txt
+
+# ========================================
+# Node.js / NPM (Frontend)
+# ========================================
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+node_modules/
+package-lock.json
+npm-debug.log
+*.tsbuildinfo
+
+# ========================================
+# Distribution & Packaging
+# ========================================
+dist/
+/Peek-*-Setup.exe
+Peek-*.zip
+SHA256SUMS
+
+# ========================================
+# IDE / Development Tools
+# ========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
