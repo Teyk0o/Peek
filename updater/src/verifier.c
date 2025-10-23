@@ -2,6 +2,10 @@
  * Verifier Implementation
  */
 
+#define _CRT_SECURE_NO_WARNINGS
+#pragma warning(disable:4996)
+#pragma warning(disable:4100)
+
 #include "verifier.h"
 #include "logger.h"
 

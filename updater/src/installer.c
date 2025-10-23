@@ -2,6 +2,10 @@
  * Installer Implementation
  */
 
+#define _CRT_SECURE_NO_WARNINGS
+#pragma warning(disable:4996)
+#pragma warning(disable:4100)
+
 #include "installer.h"
 #include "logger.h"
 

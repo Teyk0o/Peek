@@ -3,18 +3,22 @@ project(Peek-UI CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
-# WebView2 SDK
-if(NOT DEFINED WEBVIEW2_INCLUDE_DIR)
-    set(WEBVIEW2_INCLUDE_DIR "C:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/cppwinrt")
-endif()
+# WebView2 SDK - Use vcpkg's unofficial-webview2
+find_package(unofficial-webview2 CONFIG QUIET)
 
-# Find WebView2 NuGet package
-find_package(WebView2 QUIET)
+if(NOT unofficial-webview2_FOUND)
+    # Fallback to manual WebView2 detection
+    if(NOT DEFINED WEBVIEW2_INCLUDE_DIR)
+        set(WEBVIEW2_INCLUDE_DIR "C:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/cppwinrt")
+    endif()
 
-if(NOT WebView2_FOUND)
-    message(WARNING "WebView2 SDK not found. Please install WebView2 NuGet package:")
+    message(WARNING "WebView2 SDK not found via vcpkg. Please install WebView2 NuGet package:")
     message("  vcpkg install webview2:x64-windows")
     message("  OR manually set WEBVIEW2_INCLUDE_DIR and WEBVIEW2_LIB_DIR")
+    set(WebView2_FOUND FALSE)
+else()
+    set(WebView2_FOUND TRUE)
+    message(STATUS "WebView2 found via vcpkg")
 endif()
 
 set(SOURCES
@@ -43,6 +47,7 @@ set_target_properties(peek PROPERTIES
     VERSION ${PEEK_VERSION}
     SOVERSION 2
     WIN32_EXECUTABLE ON
+    LINK_FLAGS "/MANIFEST:EMBED /MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/src/manifest.xml"
 )
 
 # Include directories
@@ -66,7 +71,8 @@ target_link_libraries(peek
 
 # WebView2 linking
 if(WebView2_FOUND)
-    target_link_libraries(peek PRIVATE WebView2::WebView2)
+    target_link_libraries(peek PRIVATE unofficial::webview2::webview2)
+    message(STATUS "Linking WebView2 from vcpkg")
 else()
     message(WARNING "WebView2 not linked - runtime dependency required")
 endif()

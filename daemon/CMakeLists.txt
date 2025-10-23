@@ -22,10 +22,12 @@ set(HEADERS
     src/auto-update.h
 )
 
-# Add Windows resource file
+# Add Windows resource file (optional)
 if(WIN32)
-    enable_language(RC)
-    list(APPEND SOURCES src/resource.rc)
+    if(MSVC OR MINGW)
+        enable_language(RC)
+        list(APPEND SOURCES src/resource.rc)
+    endif()
 endif()
 
 add_executable(peekd ${SOURCES} ${HEADERS})

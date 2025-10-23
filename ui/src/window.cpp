@@ -4,6 +4,8 @@
  * Manages the main application window and WebView2 resizing
  */
 
+#pragma warning(disable:4100)
+
 #include "window.h"
 #include "webview.h"
 #include <webview2.h>
@@ -79,14 +81,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
     switch (uMsg) {
         case WM_SIZE: {
             /* Resize WebView2 to fill the window client area */
-            RECT bounds;
-            GetClientRect(hwnd, &bounds);
-
-            /* We need to resize the WebView controller
-             * This will be handled when WebView is created
-             * For now, just store the bounds for later use
-             */
-
+            webview_resize(hwnd);
             return 0;
         }
 

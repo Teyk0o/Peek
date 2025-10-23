@@ -4,6 +4,17 @@
  * Manages Named Pipes communication with UI clients
  */
 
+#define _CRT_SECURE_NO_WARNINGS
+#pragma warning(disable:4996)
+#pragma warning(disable:4100)
+#pragma warning(disable:4005)
+#pragma warning(disable:4011)
+
+/* Must include winsock2.h BEFORE windows.h to avoid conflicts */
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <windows.h>
+
 #include "ipc.h"
 #include "logger.h"
 #include <stdlib.h>

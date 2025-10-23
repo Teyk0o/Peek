@@ -2,6 +2,13 @@
 * PEEK - Network Monitor
 */
 
+#define _CRT_SECURE_NO_WARNINGS
+#pragma warning(disable:4996)
+#pragma warning(disable:4267)
+#pragma warning(disable:4005)
+#pragma warning(disable:4011)
+#pragma warning(disable:4189)
+
 #include "network.h"
 #include "logger.h"
 #include <stdio.h>

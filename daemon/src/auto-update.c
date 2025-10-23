@@ -2,6 +2,10 @@
  * PEEK Daemon Auto-Update Implementation
  */
 
+#define _CRT_SECURE_NO_WARNINGS
+#pragma warning(disable:4996)
+#pragma warning(disable:4100)
+
 #include "auto-update.h"
 #include "logger.h"
 

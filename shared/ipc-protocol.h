@@ -53,14 +53,14 @@ typedef enum {
 
 /* IPC Message Header (fixed-size) */
 typedef struct {
-    uint32_t magic;         // Magic number: 0x50454B49 ('PEKI')
-    uint32_t version;       // Protocol version: 1
-    uint32_t msg_id;        // Unique request ID (for correlation)
-    uint32_t msg_type;      // IPC_MessageType
-    uint32_t cmd_id;        // IPC_CommandID or IPC_EventType
-    uint32_t payload_size;  // Size of payload (0-65508)
-    uint32_t flags;         // Reserved for future use
-    uint32_t reserved;      // Padding
+    uint32_t magic;         /* Magic number: 0x50454B49 ('PEKI') */
+    uint32_t version;       /* Protocol version: 1 */
+    uint32_t msg_id;        /* Unique request ID (for correlation) */
+    uint32_t msg_type;      /* IPC_MessageType */
+    uint32_t cmd_id;        /* IPC_CommandID or IPC_EventType */
+    uint32_t payload_size;  /* Size of payload (0-65508) */
+    uint32_t flags;         /* Reserved for future use */
+    uint32_t reserved;      /* Padding */
 } IPC_MessageHeader;
 
 /* IPC Message (header + payload) */
@@ -78,12 +78,10 @@ typedef enum {
     STATUS_INVALID_CMD = 0x0002,
     STATUS_INVALID_PARAMS = 0x0003,
     STATUS_PERMISSION_DENIED = 0x0004,
-    STATUS_DAEMON_NOT_READY = 0x0005,
-    STATUS_TIMEOUT = 0x0006,
+    STATUS_DAEMON_NOT_READY = 0x0005
 } IPC_StatusCode;
 
 /* Payload Structures (JSON serialized in most cases) */
-
 /* CMD_GET_CONNECTIONS response: JSON array of connections */
 /* CMD_GET_SETTINGS response: JSON object with settings */
 /* CMD_SET_SETTINGS request: JSON object with new settings */

@@ -33,6 +33,11 @@ int webview_execute_script(const wchar_t *script);
  */
 int webview_post_message(const char *message);
 
+/*
+ * Resize WebView to fill window client area
+ */
+void webview_resize(HWND hwnd);
+
 #ifdef __cplusplus
 }
 #endif

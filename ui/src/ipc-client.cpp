@@ -4,6 +4,8 @@
  * Communicates with peekd.exe daemon via Named Pipes
  */
 
+#pragma warning(disable:4100)
+
 #include "ipc-client.h"
 #include "../../shared/ipc-protocol.h"
 #include <string.h>
@@ -16,7 +18,7 @@ static struct {
     HANDLE hReadThread;
     BOOL stopThread;
     void (*event_callback)(uint32_t event, const char *payload);
-} g_ipc_client = {FALSE, INVALID_HANDLE_VALUE, nullptr, FALSE, nullptr};
+} g_ipc_client;
 
 /* Forward declarations */
 static DWORD WINAPI IpcReadThread(LPVOID param);
@@ -25,6 +27,13 @@ static DWORD WINAPI IpcReadThread(LPVOID param);
  * Initialize IPC client
  */
 int ipc_client_init(void) {
+    /* Initialize global state */
+    g_ipc_client.connected = FALSE;
+    g_ipc_client.hPipe = INVALID_HANDLE_VALUE;
+    g_ipc_client.hReadThread = nullptr;
+    g_ipc_client.stopThread = FALSE;
+    g_ipc_client.event_callback = nullptr;
+
     /* Attempt to connect to daemon's Named Pipe
      * Retry up to 5 times with 200ms delay
      */

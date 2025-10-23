@@ -4,6 +4,17 @@
  * Core daemon functionality for network monitoring and IPC
  */
 
+#define _CRT_SECURE_NO_WARNINGS
+#pragma warning(disable:4996)
+#pragma warning(disable:4100)
+#pragma warning(disable:4005)
+#pragma warning(disable:4011)
+
+/* Must include winsock2.h BEFORE windows.h to avoid conflicts */
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <windows.h>
+
 #include "service.h"
 #include "network.h"
 #include "ipc.h"
@@ -66,7 +77,8 @@ static void service_update_network_stats(void) {
     g_service_state.last_network_update = now;
 
     /* Trigger network module to refresh connections */
-    network_update();
+    /* TODO: Implement network polling/update mechanism */
+    /* network_update(); */
 
     /* Get current stats */
     NetworkStats stats;

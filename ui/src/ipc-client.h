@@ -6,6 +6,7 @@
 #define PEEK_UI_IPC_CLIENT_H
 
 #include <windows.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {

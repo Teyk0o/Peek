@@ -6,6 +6,8 @@
  * Communicates with peekd.exe daemon via Named Pipes IPC
  */
 
+#pragma warning(disable:4100)
+
 #include <windows.h>
 #include <wrl.h>
 #include <webview2.h>
@@ -29,8 +31,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     (void)pCmdLine;
     (void)nCmdShow;
 
-    /* Initialize COM */
-    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    /* Initialize COM - WebView2 requires APARTMENTTHREADED */
+    HRESULT hrCom = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(hrCom)) {
+        MessageBoxW(nullptr, L"Failed to initialize COM", L"Error", MB_ICONERROR);
+        return 1;
+    }
 
     /* Create main window */
     HWND hwndMainWindow = window_create(hInstance);
