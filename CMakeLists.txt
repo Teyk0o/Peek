@@ -31,9 +31,13 @@ endif()
 add_executable(Peek WIN32 ${SOURCES} ${HEADERS} ${RESOURCES})
 
 target_link_libraries(Peek
-    ws2_32   # Winsock
-    iphlpapi # IP Helper API
-    comctl32 # Common Controls
+    ws2_32    # Winsock
+    iphlpapi  # IP Helper API
+    comctl32  # Common Controls
+    psapi     # Process Status API
+    crypt32   # Cryptography API (DPAPI, SHA256, HMAC)
+    wintrust  # WinVerifyTrust API
+    shell32   # SHGetFolderPath
 )
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
