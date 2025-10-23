@@ -91,29 +91,75 @@ jobs:
           body: |
             ## PEEK - Network Monitor ${{ github.ref_name }}
 
-            ### Features
-            - Real-time network connection monitoring
+            ### What's New in v1.3.0 - Security & Integrity
+
+            #### Security Features
+            - **8-Level Trust Status System** with color-coded visual indicators
+            - **SHA256 Binary Hashing** for process verification
+            - **Authenticode Signature Verification** using Windows WinVerifyTrust API
+            - **Microsoft Signature Detection** with certificate inspection
+            - **Manual Trust Override System** with persistent encrypted storage (DPAPI)
+            - **Visual Legend** showing all trust levels with distinct colors
+            - **Lock Icon Indicator (🔒)** for manually overridden entries
+
+            #### Trust Levels
+            - 🟢 **Microsoft Signed** (✓✓) - Windows/Microsoft processes (highest trust)
+            - 🟢 **Verified Signed** (✓) - Digitally signed by verified publisher
+            - 🟡 **Manually Trusted** (🔒👍) - User-marked as trusted
+            - 🟠 **Unsigned** (○) - No digital signature (caution)
+            - 🔴 **Invalid** (✗) - Invalid or expired signature
+            - 🔴 **Manually Threat** (🔒⚠) - User-marked as threat
+            - ⚪ **Error** (!) - Verification error
+            - ⚪ **Unknown** (?) - Verification in progress
+
+            #### UI Improvements
+            - **Trust Level Filtering** dropdown in toolbar
+            - **Color-coded Connection Table** rows based on trust status
+            - **Right-Click Context Menu** to manually override trust decisions
+            - **Multithreaded Verification** for responsive UI (8 worker threads)
+
+            #### Security Hardening
+            - Encrypted trust overrides with DPAPI (Windows Data Protection API)
+            - ACL protection limiting file access to current user only
+            - Atomic file writes with crash recovery
+            - Persistent per-path trust decisions
+
+            ### Core Features (v1.1 - v1.2)
+            - Real-time network connection monitoring (TCP & UDP)
+            - IPv4 and IPv6 support
             - Connection direction detection (Inbound/Outbound)
             - Localhost connection filtering
+            - Protocol filtering (TCP/UDP/All)
             - Connection grouping by process and endpoint
             - Visual flash effects for new connections
+            - Administrator privilege detection
             - Clean light theme UI
 
             ### Installation
             1. Download `Peek-${{ github.ref_name }}-Windows-x64.zip`
             2. Extract the archive
-            3. Run `Peek.exe`
+            3. Run `Peek.exe` (administrator privileges recommended for full functionality)
 
             ### Requirements
             - Windows 10/11
             - x64 architecture
+            - Administrator privileges (recommended)
+
+            ### Usage Tips
+            - **View Trust Status**: Colors and symbols in the Trust column show binary security status
+            - **Filter by Trust**: Use the "Trust:" dropdown to see only specific trust levels
+            - **Override Trust**: Right-click on any connection to manually mark as Trusted or Threat
+            - **Monitor Unsigned Binaries**: Orange rows indicate unsigned executables (potential risk)
 
             ### Files
             - `Peek-${{ github.ref_name }}-Windows-x64.zip`: Complete package with assets
-            - `Peek.exe`: Standalone executable
+            - `Peek.exe`: Standalone executable (code-signed)
+
+            ### Security Note
+            v1.3.0 adds comprehensive security analysis capabilities. The trust system helps identify potentially suspicious network activity by unsigned or invalid binaries. However, signature verification is not a guarantee of safety - always review what processes are connecting to the network.
 
             ---
-            🤖 Built automatically with GitHub Actions
+            Built with Windows API | C11 | MIT License
           draft: false
           prerelease: false
         env:
