@@ -17,19 +17,35 @@
 #define ID_STATUSBAR 1005
 #define ID_TIMER 1006
 #define ID_TIMER_FLASH 1007
+#define ID_TIMER_SECURITY 1013
 #define ID_RADIO_ALL 1008
 #define ID_RADIO_OUTBOUND 1009
 #define ID_RADIO_INBOUND 1010
 #define ID_CHECK_LOCALHOST 1011
 #define ID_COMBO_PROTOCOL 1012
+#define ID_COMBO_TRUST 1015
+#define ID_LEGEND_GROUP 1014
 
 #define FLASH_DURATION_MS 1500
+#define LEGEND_HEIGHT 50
 #define MAX_HIGHLIGHTED_ITEMS 100
 
 typedef struct {
     int item_index;
     DWORD start_time;
 } HighlightedItem;
+
+// Store connection keys to find them in seen_connections
+typedef struct {
+    DWORD pid;
+    DWORD remote_addr;
+    DWORD remote_port;
+    DWORD local_port;
+} ConnectionKey;
+
+#define MAX_LISTVIEW_ITEMS 2000
+static ConnectionKey g_connection_keys[MAX_LISTVIEW_ITEMS];
+static int g_connection_keys_count = 0;
 
 static HWND g_hwndMain = NULL;
 static HWND g_hwndListView = NULL;
@@ -42,6 +58,7 @@ static HWND g_hwndRadioOutbound = NULL;
 static HWND g_hwndRadioInbound = NULL;
 static HWND g_hwndCheckLocalhost = NULL;
 static HWND g_hwndComboProtocol = NULL;
+static HWND g_hwndComboTrust = NULL;
 static HINSTANCE g_hInstance = NULL;
 static BOOL g_monitoring = FALSE;
 static ConnectionDirection g_filter = CONN_OUTBOUND; // Default to outbound only
@@ -50,8 +67,16 @@ static BOOL g_show_localhost = TRUE; // Default to show localhost connections
 // Protocol filter: -1 = All, PROTO_TCP = TCP only, PROTO_UDP = UDP only
 static int g_protocol_filter = -1; // Default to show all protocols
 
+// Trust level filter: -1 = All, or a specific TrustStatus value to filter by
+// When -1, show all trust levels; otherwise only show connections with the specified trust status
+static int g_trust_filter = -1; // Default to show all trust levels
+
 static HighlightedItem g_highlighted_items[MAX_HIGHLIGHTED_ITEMS];
 static int g_highlighted_count = 0;
+
+// Security info loading progress
+static HANDLE g_security_thread = NULL;
+static BOOL g_security_loading = FALSE;
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void CreateControls(HWND hwnd);
@@ -61,6 +86,25 @@ void AddHighlightedItem(int item_index);
 void UpdateHighlights(void);
 COLORREF GetHighlightColor(int item_index, BOOL* is_highlighted);
 void RefreshListViewWithFilter(void);
+void UpdateTrustColumnForConnection(DWORD pid, DWORD remote_addr, DWORD remote_port, DWORD local_port);
+
+// Security loading thread
+static DWORD WINAPI LoadSecurityInfoThread(LPVOID lpParam) {
+    (void)lpParam;
+
+    // Compute security info for all seen connections in parallel
+    // This updates the seen_connections array directly (thread-safe)
+    network_compute_security_for_all_seen();
+
+    g_security_loading = FALSE;
+
+    // Trigger full UI refresh after all security info is loaded
+    if (g_hwndListView) {
+        PostMessage(g_hwndMain, WM_USER + 1, 0, 0); // Custom message to refresh
+    }
+
+    return 0;
+}
 
 int gui_init(HINSTANCE hInstance) {
     g_hInstance = hInstance;
@@ -256,7 +300,113 @@ void CreateControls(HWND hwnd) {
     // Set default to "All"
     SendMessageW(g_hwndComboProtocol, CB_SETCURSEL, 0, 0);
 
-    int listY = btnY + btnHeight + btnMargin;
+    // Trust Level filter ComboBox
+    int trustComboX = comboX + 65 + 80 + 20;
+    CreateWindowW(L"STATIC", L"Trust:",
+        WS_CHILD | WS_VISIBLE,
+        trustComboX, btnY + 8, 45, 20,
+        hwnd, NULL, g_hInstance, NULL);
+
+    g_hwndComboTrust = CreateWindowW(
+        L"COMBOBOX",
+        NULL,
+        WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+        trustComboX + 50, btnY + 5, 120, 150,
+        hwnd,
+        (HMENU)ID_COMBO_TRUST,
+        g_hInstance,
+        NULL
+    );
+
+    // Add items to Trust ComboBox
+    SendMessageW(g_hwndComboTrust, CB_ADDSTRING, 0, (LPARAM)L"All");
+    SendMessageW(g_hwndComboTrust, CB_ADDSTRING, 0, (LPARAM)L"Microsoft Signed");
+    SendMessageW(g_hwndComboTrust, CB_ADDSTRING, 0, (LPARAM)L"Verified Signed");
+    SendMessageW(g_hwndComboTrust, CB_ADDSTRING, 0, (LPARAM)L"Manually Trusted");
+    SendMessageW(g_hwndComboTrust, CB_ADDSTRING, 0, (LPARAM)L"Unsigned");
+    SendMessageW(g_hwndComboTrust, CB_ADDSTRING, 0, (LPARAM)L"Invalid");
+    SendMessageW(g_hwndComboTrust, CB_ADDSTRING, 0, (LPARAM)L"Manually Threat");
+    SendMessageW(g_hwndComboTrust, CB_ADDSTRING, 0, (LPARAM)L"Error");
+    SendMessageW(g_hwndComboTrust, CB_ADDSTRING, 0, (LPARAM)L"Unknown");
+
+    // Set default to "All"
+    SendMessageW(g_hwndComboTrust, CB_SETCURSEL, 0, 0);
+
+    // Legend/Trust Status Key
+    int legendY = btnY + btnHeight + btnMargin;
+    CreateWindowW(L"STATIC", L"Trust Status Legend:",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        btnMargin, legendY, 150, 20,
+        hwnd, NULL, g_hInstance, NULL);
+
+    // Create legend items with colors (2 rows, 3 columns each)
+    int legendItemX = btnMargin + 150;
+    int legendItemY = legendY;
+    int colorBoxSize = 15;
+    int spacingX = 200;
+    int spacingY = 25;
+
+    // Helper function to draw a colored legend box
+    // We'll use WM_CTLCOLORSTATIC to color the static controls instead
+
+    // Row 1: Dark Green, Green, Yellow
+    // Dark Green - Microsoft Signed
+    CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        legendItemX, legendItemY + 2, colorBoxSize, colorBoxSize,
+        hwnd, (HMENU)1401, g_hInstance, NULL);
+    SetWindowLongPtrW(GetDlgItem(hwnd, 1401), GWLP_USERDATA, (LONG_PTR)RGB(144, 238, 144));
+    CreateWindowW(L"STATIC", L"Microsoft Signed", WS_CHILD | WS_VISIBLE,
+        legendItemX + colorBoxSize + 5, legendItemY, 120, 20,
+        hwnd, NULL, g_hInstance, NULL);
+
+    // Green - Verified Publisher Signed
+    CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        legendItemX + spacingX, legendItemY + 2, colorBoxSize, colorBoxSize,
+        hwnd, (HMENU)1402, g_hInstance, NULL);
+    SetWindowLongPtrW(GetDlgItem(hwnd, 1402), GWLP_USERDATA, (LONG_PTR)RGB(200, 255, 200));
+    CreateWindowW(L"STATIC", L"Verified Signed", WS_CHILD | WS_VISIBLE,
+        legendItemX + spacingX + colorBoxSize + 5, legendItemY, 120, 20,
+        hwnd, NULL, g_hInstance, NULL);
+
+    // Yellow - Manually Trusted
+    CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        legendItemX + spacingX * 2, legendItemY + 2, colorBoxSize, colorBoxSize,
+        hwnd, (HMENU)1403, g_hInstance, NULL);
+    SetWindowLongPtrW(GetDlgItem(hwnd, 1403), GWLP_USERDATA, (LONG_PTR)RGB(255, 255, 153));
+    CreateWindowW(L"STATIC", L"Manually Trusted", WS_CHILD | WS_VISIBLE,
+        legendItemX + spacingX * 2 + colorBoxSize + 5, legendItemY, 120, 20,
+        hwnd, NULL, g_hInstance, NULL);
+
+    // Row 2: Orange, Red, Dark Red
+    // Orange - Unsigned
+    CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        legendItemX, legendItemY + spacingY + 2, colorBoxSize, colorBoxSize,
+        hwnd, (HMENU)1404, g_hInstance, NULL);
+    SetWindowLongPtrW(GetDlgItem(hwnd, 1404), GWLP_USERDATA, (LONG_PTR)RGB(255, 220, 180));
+    CreateWindowW(L"STATIC", L"Not Signed", WS_CHILD | WS_VISIBLE,
+        legendItemX + colorBoxSize + 5, legendItemY + spacingY, 120, 20,
+        hwnd, NULL, g_hInstance, NULL);
+
+    // Red - Invalid Signature
+    CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        legendItemX + spacingX, legendItemY + spacingY + 2, colorBoxSize, colorBoxSize,
+        hwnd, (HMENU)1405, g_hInstance, NULL);
+    SetWindowLongPtrW(GetDlgItem(hwnd, 1405), GWLP_USERDATA, (LONG_PTR)RGB(255, 200, 200));
+    CreateWindowW(L"STATIC", L"Invalid Signature", WS_CHILD | WS_VISIBLE,
+        legendItemX + spacingX + colorBoxSize + 5, legendItemY + spacingY, 120, 20,
+        hwnd, NULL, g_hInstance, NULL);
+
+    // Dark Red - Manually Threat
+    CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        legendItemX + spacingX * 2, legendItemY + spacingY + 2, colorBoxSize, colorBoxSize,
+        hwnd, (HMENU)1406, g_hInstance, NULL);
+    SetWindowLongPtrW(GetDlgItem(hwnd, 1406), GWLP_USERDATA, (LONG_PTR)RGB(255, 153, 153));
+    CreateWindowW(L"STATIC", L"Manually Threat", WS_CHILD | WS_VISIBLE,
+        legendItemX + spacingX * 2 + colorBoxSize + 5, legendItemY + spacingY, 120, 20,
+        hwnd, NULL, g_hInstance, NULL);
+
+    // listY accounts for: btnMargin + btnHeight (toolbar) + legendY offset + legend height (70) + spacing
+    int listY = btnMargin + btnHeight + btnMargin + 70;
     g_hwndListView = CreateWindowEx(
         0,
         WC_LISTVIEW,
@@ -264,7 +414,7 @@ void CreateControls(HWND hwnd) {
         WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | WS_BORDER,
         btnMargin, listY,
         rcClient.right - btnMargin * 2,
-        rcClient.bottom - listY - 40,
+        rcClient.bottom - listY - 40,  // Leave space for status bar
         hwnd,
         (HMENU)ID_LISTVIEW,
         g_hInstance,
@@ -339,18 +489,26 @@ void InitializeListView(void) {
     // Process column
     lvc.pszText = L"Process";
     lvc.cx = 150;
+    lvc.fmt = LVCFMT_LEFT;
     ListView_InsertColumn(g_hwndListView, 7, &lvc);
+
+    // Trust column
+    lvc.pszText = L"Trust";
+    lvc.cx = 50;
+    lvc.fmt = LVCFMT_CENTER;
+    ListView_InsertColumn(g_hwndListView, 8, &lvc);
 
     // PID column
     lvc.pszText = L"PID";
     lvc.cx = 70;
-    ListView_InsertColumn(g_hwndListView, 8, &lvc);
+    lvc.fmt = LVCFMT_CENTER;
+    ListView_InsertColumn(g_hwndListView, 9, &lvc);
 
     // Count column
     lvc.pszText = L"Count";
     lvc.cx = 60;
     lvc.fmt = LVCFMT_CENTER;
-    ListView_InsertColumn(g_hwndListView, 9, &lvc);
+    ListView_InsertColumn(g_hwndListView, 10, &lvc);
 }
 
 void gui_add_connection(const NetworkConnection* conn) {
@@ -369,6 +527,11 @@ void gui_add_connection(const NetworkConnection* conn) {
     // Apply protocol filter
     if (g_protocol_filter != -1 && conn->protocol != g_protocol_filter) {
         return; // Skip this connection based on protocol filter
+    }
+
+    // Apply trust level filter
+    if (g_trust_filter != -1 && conn->trust_status != g_trust_filter) {
+        return; // Skip this connection based on trust level filter
     }
 
     // Prepare connection data
@@ -417,6 +580,37 @@ void gui_add_connection(const NetworkConnection* conn) {
     wchar_t protocol_str[8];
     wcscpy(protocol_str, (conn->protocol == PROTO_TCP) ? L"TCP" : L"UDP");
 
+    // Trust status icon - use symbols that match the color scheme
+    // Manual overrides get a lock icon prefix
+    wchar_t trust_str[8];
+    switch (conn->trust_status) {
+        case TRUST_MICROSOFT_SIGNED:
+            wcscpy(trust_str, L"✓✓");  // Double checkmark for Microsoft
+            break;
+        case TRUST_VERIFIED_SIGNED:
+            wcscpy(trust_str, L"✓");   // Checkmark for verified publisher
+            break;
+        case TRUST_MANUAL_TRUSTED:
+            wcscpy(trust_str, L"🔒👍");  // Lock + Thumbs up for manually trusted
+            break;
+        case TRUST_UNSIGNED:
+            wcscpy(trust_str, L"○");   // Circle for unsigned
+            break;
+        case TRUST_INVALID:
+            wcscpy(trust_str, L"✗");   // X for invalid
+            break;
+        case TRUST_MANUAL_THREAT:
+            wcscpy(trust_str, L"🔒⚠");   // Lock + Warning for manually marked threat
+            break;
+        case TRUST_ERROR:
+            wcscpy(trust_str, L"!");   // Exclamation for error
+            break;
+        case TRUST_UNKNOWN:
+        default:
+            wcscpy(trust_str, L"?");   // Question for unknown
+            break;
+    }
+
     // Check if this connection already exists (same process, protocol, remote_addr, remote_port)
     int item_count = ListView_GetItemCount(g_hwndListView);
     for (int i = 0; i < item_count; i++) {
@@ -430,7 +624,7 @@ void gui_add_connection(const NetworkConnection* conn) {
         ListView_GetItemText(g_hwndListView, i, 2, existing_protocol, 16);
         ListView_GetItemText(g_hwndListView, i, 3, existing_remote_ip, 64);
         ListView_GetItemText(g_hwndListView, i, 4, existing_remote_port, 16);
-        ListView_GetItemText(g_hwndListView, i, 9, existing_count, 16);
+        ListView_GetItemText(g_hwndListView, i, 10, existing_count, 16);
 
         // If same process, protocol and same remote endpoint, increment count
         if (wcscmp(existing_process, w_process) == 0 &&
@@ -448,7 +642,7 @@ void gui_add_connection(const NetworkConnection* conn) {
             // Update count
             wchar_t new_count[16];
             swprintf(new_count, 16, L"%d", count);
-            ListView_SetItemText(g_hwndListView, i, 9, new_count);
+            ListView_SetItemText(g_hwndListView, i, 10, new_count);
 
             // Update timestamp to the latest
             wchar_t time_str[32];
@@ -472,11 +666,22 @@ void gui_add_connection(const NetworkConnection* conn) {
              conn->timestamp.wMinute,
              conn->timestamp.wSecond);
 
+    // Store connection key for this item
+    int key_index = g_connection_keys_count;
+    if (key_index < MAX_LISTVIEW_ITEMS) {
+        g_connection_keys[key_index].pid = conn->pid;
+        g_connection_keys[key_index].remote_addr = conn->remote_addr;
+        g_connection_keys[key_index].remote_port = conn->remote_port;
+        g_connection_keys[key_index].local_port = conn->local_port;
+        g_connection_keys_count++;
+    }
+
     LVITEM lvi = {0};
-    lvi.mask = LVIF_TEXT;
+    lvi.mask = LVIF_TEXT | LVIF_PARAM;
     lvi.iItem = item_count; // Insert at end
     lvi.iSubItem = 0;
     lvi.pszText = time_str;
+    lvi.lParam = (LPARAM)key_index; // Store index in g_connection_keys
     int index = ListView_InsertItem(g_hwndListView, &lvi);
 
     ListView_SetItemText(g_hwndListView, index, 1, direction_str);
@@ -486,8 +691,9 @@ void gui_add_connection(const NetworkConnection* conn) {
     ListView_SetItemText(g_hwndListView, index, 5, w_local_ip);
     ListView_SetItemText(g_hwndListView, index, 6, local_port);
     ListView_SetItemText(g_hwndListView, index, 7, w_process);
-    ListView_SetItemText(g_hwndListView, index, 8, pid_str);
-    ListView_SetItemText(g_hwndListView, index, 9, L"1");
+    ListView_SetItemText(g_hwndListView, index, 8, trust_str);
+    ListView_SetItemText(g_hwndListView, index, 9, pid_str);
+    ListView_SetItemText(g_hwndListView, index, 10, L"1");
 
     // Trigger highlight effect for new connection
     AddHighlightedItem(index);
@@ -518,6 +724,7 @@ void gui_clear_list(void) {
     if (g_hwndListView) {
         ListView_DeleteAllItems(g_hwndListView);
         g_highlighted_count = 0; // Clear all highlights
+        g_connection_keys_count = 0; // Reset connection keys
         LOG_INFO("ListView cleared");
     }
 }
@@ -528,6 +735,7 @@ void RefreshListViewWithFilter(void) {
     // Clear current list and highlights
     ListView_DeleteAllItems(g_hwndListView);
     g_highlighted_count = 0;
+    g_connection_keys_count = 0; // Reset connection keys
 
     // Get all seen connections and re-add them with the current filter
     NetworkConnection* all_conns = NULL;
@@ -545,6 +753,71 @@ void RefreshListViewWithFilter(void) {
     NetworkStats stats;
     network_get_stats(&stats);
     gui_update_stats(&stats);
+}
+
+// Update the trust column text for a specific connection in the ListView
+void UpdateTrustColumnForConnection(DWORD pid, DWORD remote_addr, DWORD remote_port, DWORD local_port) {
+    if (!g_hwndListView) return;
+
+    int item_count = ListView_GetItemCount(g_hwndListView);
+
+    // Search for the item with matching connection key
+    for (int i = 0; i < item_count; i++) {
+        LVITEM lvi = {0};
+        lvi.mask = LVIF_PARAM;
+        lvi.iItem = i;
+
+        if (ListView_GetItem(g_hwndListView, &lvi)) {
+            int key_index = (int)lvi.lParam;
+            if (key_index >= 0 && key_index < g_connection_keys_count) {
+                ConnectionKey* key = &g_connection_keys[key_index];
+
+                // Check if this is the connection we're looking for
+                if (key->pid == pid &&
+                    key->remote_addr == remote_addr &&
+                    key->remote_port == remote_port &&
+                    key->local_port == local_port) {
+
+                    // Get the real connection to read its trust status
+                    NetworkConnection* conn = network_find_connection(pid, remote_addr, remote_port, local_port);
+                    if (conn) {
+                        wchar_t trust_str[8];
+                        switch (conn->trust_status) {
+                            case TRUST_MICROSOFT_SIGNED:
+                                wcscpy(trust_str, L"✓✓");  // Double checkmark for Microsoft
+                                break;
+                            case TRUST_VERIFIED_SIGNED:
+                                wcscpy(trust_str, L"✓");   // Checkmark for verified publisher
+                                break;
+                            case TRUST_MANUAL_TRUSTED:
+                                wcscpy(trust_str, L"🔒👍");  // Lock + Thumbs up for manually trusted
+                                break;
+                            case TRUST_UNSIGNED:
+                                wcscpy(trust_str, L"○");   // Circle for unsigned
+                                break;
+                            case TRUST_INVALID:
+                                wcscpy(trust_str, L"✗");   // X for invalid
+                                break;
+                            case TRUST_MANUAL_THREAT:
+                                wcscpy(trust_str, L"🔒⚠");   // Lock + Warning for manually marked threat
+                                break;
+                            case TRUST_ERROR:
+                                wcscpy(trust_str, L"!");   // Exclamation for error
+                                break;
+                            case TRUST_UNKNOWN:
+                            default:
+                                wcscpy(trust_str, L"?");   // Question for unknown
+                                break;
+                        }
+
+                        // Update the Trust column text
+                        ListView_SetItemText(g_hwndListView, i, 8, trust_str);
+                    }
+                    return; // Found and updated
+                }
+            }
+        }
+    }
 }
 
 void AddHighlightedItem(int item_index) {
@@ -650,12 +923,27 @@ void UpdateMonitoringState(BOOL monitoring) {
 
         SetTimer(g_hwndMain, ID_TIMER, 500, NULL);  // Check every 500ms
         SetTimer(g_hwndMain, ID_TIMER_FLASH, 50, NULL);  // Update highlights every 50ms for smooth fade
+
+        // Launch security info loading in background thread
+        if (!g_security_loading) {
+            g_security_loading = TRUE;
+            g_security_thread = CreateThread(NULL, 0, LoadSecurityInfoThread, NULL, 0, NULL);
+        }
+
         LOG_INFO("Monitoring started");
     } else {
         EnableWindow(g_hwndBtnStart, TRUE);
         EnableWindow(g_hwndBtnStop, FALSE);
         KillTimer(g_hwndMain, ID_TIMER);
         KillTimer(g_hwndMain, ID_TIMER_FLASH);
+
+        // Wait for security thread to complete if still running
+        if (g_security_thread) {
+            WaitForSingleObject(g_security_thread, 2000);  // Wait max 2s
+            CloseHandle(g_security_thread);
+            g_security_thread = NULL;
+        }
+
         LOG_INFO("Monitoring stopped");
     }
 }
@@ -680,7 +968,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
                 int btnMargin = 10;
                 int btnHeight = 35;
-                int listY = btnMargin + btnHeight + btnMargin;
+                // Legend takes: 20 (title) + 25 (first row) + 25 (second row) + spacing
+                int legendHeight = 70;
+                int listY = btnMargin + btnHeight + btnMargin + legendHeight;
 
                 SetWindowPos(g_hwndListView, NULL,
                     btnMargin, listY,
@@ -752,6 +1042,51 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                         RefreshListViewWithFilter();
                     }
                     break;
+
+                case ID_COMBO_TRUST:
+                    if (wmEvent == CBN_SELCHANGE) {
+                        int sel = SendMessageW(g_hwndComboTrust, CB_GETCURSEL, 0, 0);
+                        switch (sel) {
+                            case 0: // All
+                                g_trust_filter = -1;
+                                LOG_INFO("Trust filter: All");
+                                break;
+                            case 1: // Microsoft Signed
+                                g_trust_filter = TRUST_MICROSOFT_SIGNED;
+                                LOG_INFO("Trust filter: Microsoft Signed");
+                                break;
+                            case 2: // Verified Signed
+                                g_trust_filter = TRUST_VERIFIED_SIGNED;
+                                LOG_INFO("Trust filter: Verified Signed");
+                                break;
+                            case 3: // Manually Trusted
+                                g_trust_filter = TRUST_MANUAL_TRUSTED;
+                                LOG_INFO("Trust filter: Manually Trusted");
+                                break;
+                            case 4: // Unsigned
+                                g_trust_filter = TRUST_UNSIGNED;
+                                LOG_INFO("Trust filter: Unsigned");
+                                break;
+                            case 5: // Invalid
+                                g_trust_filter = TRUST_INVALID;
+                                LOG_INFO("Trust filter: Invalid");
+                                break;
+                            case 6: // Manually Threat
+                                g_trust_filter = TRUST_MANUAL_THREAT;
+                                LOG_INFO("Trust filter: Manually Threat");
+                                break;
+                            case 7: // Error
+                                g_trust_filter = TRUST_ERROR;
+                                LOG_INFO("Trust filter: Error");
+                                break;
+                            case 8: // Unknown
+                                g_trust_filter = TRUST_UNKNOWN;
+                                LOG_INFO("Trust filter: Unknown");
+                                break;
+                        }
+                        RefreshListViewWithFilter();
+                    }
+                    break;
             }
             return 0;
         }
@@ -762,8 +1097,30 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 int count = 0;
 
                 if (network_check_new_connections(&new_conns, &count) == 0) {
+                    BOOL need_refresh = FALSE;
                     for (int i = 0; i < count; i++) {
+                        // Add connection to GUI first
                         gui_add_connection(&new_conns[i]);
+
+                        // Then find the real connection in seen_connections and compute security info
+                        NetworkConnection* real_conn = network_find_connection(
+                            new_conns[i].pid,
+                            new_conns[i].remote_addr,
+                            new_conns[i].remote_port,
+                            new_conns[i].local_port
+                        );
+
+                        if (real_conn && !real_conn->security_info_loaded) {
+                            network_compute_security_info_deferred(real_conn);
+                            // Update the Trust column text and color for this connection
+                            UpdateTrustColumnForConnection(
+                                new_conns[i].pid,
+                                new_conns[i].remote_addr,
+                                new_conns[i].remote_port,
+                                new_conns[i].local_port
+                            );
+                            need_refresh = TRUE;
+                        }
 
                         char remote_ip[64], local_ip[64];
                         if (new_conns[i].ip_version == IP_V4) {
@@ -789,6 +1146,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                         gui_update_stats(&stats);
                     }
 
+                    // Refresh ListView if security info was computed for new connections
+                    if (need_refresh) {
+                        InvalidateRect(g_hwndListView, NULL, FALSE);
+                    }
+
                     free(new_conns);
                 }
             } else if (wParam == ID_TIMER_FLASH) {
@@ -798,6 +1160,63 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         case WM_NOTIFY: {
             LPNMHDR nmhdr = (LPNMHDR)lParam;
+
+            // Handle right-click context menu for ListView
+            if (nmhdr->hwndFrom == g_hwndListView && nmhdr->code == NM_RCLICK) {
+                LPNMITEMACTIVATE pnmia = (LPNMITEMACTIVATE)lParam;
+                if (pnmia->iItem >= 0) {
+                    // Show context menu for the clicked item
+                    POINT pt;
+                    GetCursorPos(&pt);
+
+                    HMENU hMenu = CreatePopupMenu();
+                    AppendMenuW(hMenu, MF_STRING, 1, L"Mark as Trusted (Green)");
+                    AppendMenuW(hMenu, MF_STRING, 2, L"Mark as Threat (Red)");
+                    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                    AppendMenuW(hMenu, MF_STRING, 3, L"Reset to Auto (Default)");
+
+                    int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, NULL);
+                    DestroyMenu(hMenu);
+
+                    if (cmd > 0) {
+                        // Get the connection for this item
+                        LVITEM lvi = {0};
+                        lvi.mask = LVIF_PARAM;
+                        lvi.iItem = pnmia->iItem;
+                        if (ListView_GetItem(g_hwndListView, &lvi)) {
+                            int key_index = (int)lvi.lParam;
+                            if (key_index >= 0 && key_index < g_connection_keys_count) {
+                                ConnectionKey* key = &g_connection_keys[key_index];
+                                NetworkConnection* conn = network_find_connection(
+                                    key->pid, key->remote_addr, key->remote_port, key->local_port);
+
+                                if (conn && strlen(conn->process_path) > 0) {
+                                    TrustStatus new_status = TRUST_UNKNOWN;
+                                    switch (cmd) {
+                                        case 1: // Mark as Trusted
+                                            new_status = TRUST_MANUAL_TRUSTED;
+                                            break;
+                                        case 2: // Mark as Threat
+                                            new_status = TRUST_MANUAL_THREAT;
+                                            break;
+                                        case 3: // Reset to Auto
+                                            new_status = TRUST_UNKNOWN;
+                                            break;
+                                    }
+
+                                    // Apply trust override (saves to file and updates all connections)
+                                    network_apply_trust_override(conn->process_path, new_status);
+
+                                    // Refresh the entire ListView to show changes
+                                    RefreshListViewWithFilter();
+                                }
+                            }
+                        }
+                    }
+                }
+                return 0;
+            }
+
             if (nmhdr->hwndFrom == g_hwndListView && nmhdr->code == NM_CUSTOMDRAW) {
                 LPNMLVCUSTOMDRAW lplvcd = (LPNMLVCUSTOMDRAW)lParam;
 
@@ -810,6 +1229,79 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
                     case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
                         int item = (int)lplvcd->nmcd.dwItemSpec;
+                        int subitem = lplvcd->iSubItem;
+
+                        // Special coloring for Trust column (column 8)
+                        if (subitem == 8) {
+                            // Get the connection key index stored in lParam
+                            LVITEM lvi = {0};
+                            lvi.mask = LVIF_PARAM;
+                            lvi.iItem = item;
+                            if (ListView_GetItem(g_hwndListView, &lvi)) {
+                                int key_index = (int)lvi.lParam;
+                                if (key_index >= 0 && key_index < g_connection_keys_count) {
+                                    ConnectionKey* key = &g_connection_keys[key_index];
+                                    NetworkConnection* conn = network_find_connection(
+                                        key->pid, key->remote_addr, key->remote_port, key->local_port);
+
+                                    if (conn) {
+                                    // Set background color based on trust status (6-level system)
+                                    switch (conn->trust_status) {
+                                        case TRUST_MICROSOFT_SIGNED:
+                                            // Dark Green - Microsoft/Windows signed (highest trust)
+                                            lplvcd->clrTextBk = RGB(144, 238, 144);  // Light green
+                                            lplvcd->clrText = RGB(0, 80, 0);          // Very dark green
+                                            break;
+
+                                        case TRUST_VERIFIED_SIGNED:
+                                            // Green - Verified publisher signature
+                                            lplvcd->clrTextBk = RGB(200, 255, 200);  // Lighter green
+                                            lplvcd->clrText = RGB(0, 120, 0);        // Dark green
+                                            break;
+
+                                        case TRUST_MANUAL_TRUSTED:
+                                            // Yellow-Green - Manually marked as trusted
+                                            lplvcd->clrTextBk = RGB(255, 255, 153);  // Light yellow
+                                            lplvcd->clrText = RGB(100, 100, 0);      // Dark yellow-green
+                                            break;
+
+                                        case TRUST_UNSIGNED:
+                                            // Orange - Not signed (caution)
+                                            lplvcd->clrTextBk = RGB(255, 220, 180);  // Light orange
+                                            lplvcd->clrText = RGB(180, 100, 0);      // Dark orange
+                                            break;
+
+                                        case TRUST_INVALID:
+                                            // Red - Invalid/expired signature (danger)
+                                            lplvcd->clrTextBk = RGB(255, 200, 200);  // Light red
+                                            lplvcd->clrText = RGB(180, 0, 0);        // Dark red
+                                            break;
+
+                                        case TRUST_MANUAL_THREAT:
+                                            // Dark Red - Manually marked as threat
+                                            lplvcd->clrTextBk = RGB(255, 153, 153);  // Medium red
+                                            lplvcd->clrText = RGB(139, 0, 0);        // Very dark red
+                                            break;
+
+                                        case TRUST_ERROR:
+                                            // Gray-Red - Error during verification
+                                            lplvcd->clrTextBk = RGB(240, 200, 200);  // Grayish red
+                                            lplvcd->clrText = RGB(120, 60, 60);      // Dark gray-red
+                                            break;
+
+                                        default: // TRUST_UNKNOWN
+                                            // Gray - Not yet verified
+                                            lplvcd->clrTextBk = RGB(220, 220, 220);  // Light gray
+                                            lplvcd->clrText = RGB(80, 80, 80);       // Dark gray
+                                            break;
+                                    }
+                                    }
+                                }
+                            }
+                            return CDRF_NEWFONT;
+                        }
+
+                        // Default highlighting for other columns
                         BOOL is_highlighted = FALSE;
                         COLORREF bg_color = GetHighlightColor(item, &is_highlighted);
 
@@ -823,9 +1315,56 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             return 0;
         }
 
-        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORSTATIC: {
+            // Handle coloring of legend color boxes (IDs 1401-1406)
+            HWND hwndControl = (HWND)lParam;
+            HDC hdcControl = (HDC)wParam;
+
+            int ctrlId = GetDlgCtrlID(hwndControl);
+            // Check if this is one of the legend color boxes
+            if (ctrlId >= 1401 && ctrlId <= 1406) {
+                // Get the color stored in user data
+                DWORD_PTR userData = GetWindowLongPtrW(hwndControl, GWLP_USERDATA);
+                if (userData != 0) {
+                    COLORREF color = (COLORREF)userData;
+                    // Create brush with the stored color
+                    static HBRUSH hBrush[6] = {NULL};
+                    static COLORREF lastColor[6] = {0};
+
+                    int idx = ctrlId - 1401;
+                    if (idx >= 0 && idx < 6) {
+                        // Delete old brush if color changed
+                        if (lastColor[idx] != color && hBrush[idx] != NULL) {
+                            DeleteObject(hBrush[idx]);
+                            hBrush[idx] = NULL;
+                        }
+
+                        // Create new brush if needed
+                        if (hBrush[idx] == NULL) {
+                            hBrush[idx] = CreateSolidBrush(color);
+                            lastColor[idx] = color;
+                        }
+
+                        SetBkColor(hdcControl, color);
+                        SetTextColor(hdcControl, color);  // Match text to background
+                        return (LRESULT)hBrush[idx];
+                    }
+                }
+            }
+            // Default: return white background for other static controls
+            return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
+        }
+
         case WM_CTLCOLORBTN: {
             return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
+        }
+
+        case WM_USER + 1: {
+            // Security info loading completed - refresh the list view
+            if (g_monitoring && g_hwndListView) {
+                RefreshListViewWithFilter();
+            }
+            return 0;
         }
 
         case WM_DESTROY:

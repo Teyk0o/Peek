@@ -4,7 +4,7 @@
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://www.microsoft.com/windows)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/Teyk0o/Peek/release.yml?branch=main)](https://github.com/Teyk0o/Peek/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Teyk0o/Peek/release.yml)](https://github.com/Teyk0o/Peek/actions)
 [![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F71-success)](https://www.virustotal.com/gui/file/9298c1aab0d267c9126d32834e81663c30b3eae5d9cd95672711631449a58fe6)
 [![Language](https://img.shields.io/badge/language-C-blue.svg)](https://en.wikipedia.org/wiki/C_(programming_language))
 [![Release](https://img.shields.io/github/v/release/Teyk0o/Peek)](https://github.com/Teyk0o/Peek/releases)
@@ -78,17 +78,25 @@ It also tracks connection stats and maintains a cached table of seen connections
 
 ### **2. GUI Module (`gui.c/h`)**
 
-Handles the entire Win32 user interface: ListView, filters, buttons, and animations.
+Handles the entire Win32 user interface: ListView, filters, buttons, animations, and security indicators.
 
 **Features:**
 
 * Real-time connection table with direction and protocol indicators
 * Filtering by direction (Inbound / Outbound / All)
 * Filtering by protocol (TCP / UDP / All) with dropdown selector
+* Filtering by trust level (Microsoft Signed / Verified / Unsigned / Invalid / etc.) with dropdown selector
 * Toggle for localhost traffic visibility
 * Smart grouping by process, protocol, and endpoint
 * Flash animation for new or updated connections
 * IPv6 address display support
+* **Security & Trust Status Features (v1.3.0+):**
+  - Visual trust status legend with color coding (8 levels)
+  - Color-coded rows based on binary signature verification status
+  - Manual trust override system (right-click context menu)
+  - Lock icon (🔒) indicator for user-defined trust overrides
+  - Trust symbols: ✓✓ (Microsoft), ✓ (Verified), 🔒👍 (Trusted), ○ (Unsigned), ✗ (Invalid), 🔒⚠ (Threat), ! (Error), ? (Unknown)
+  - SHA256 binary hashing display
 
 Visual layout:
 
@@ -266,7 +274,32 @@ PEEK runs without admin rights, but some system process names may appear as `[Sy
 * ~~Enhanced process name resolution~~ ✅
 * ~~Administrator privilege detection~~ ✅
 
-**Short term (v1.3.x):**
+**✅ Completed (v1.3.0) - Security & Integrity:**
+
+* ~~SHA256 binary hashing~~ ✅
+* ~~Authenticode signature verification (WinVerifyTrust)~~ ✅
+* ~~Microsoft signature detection~~ ✅
+* ~~8-level trust status system~~ ✅
+  - Microsoft/Windows Signed (highest trust)
+  - Verified Publisher Signed
+  - Manually Trusted (user override)
+  - Unsigned (caution)
+  - Invalid/Expired Signature
+  - Manually Marked as Threat (user override)
+  - Verification Error
+  - Unknown (verifying)
+* ~~Visual trust status legend~~ ✅
+* ~~Trust status color coding (6-level palette)~~ ✅
+* ~~Manual trust override system (persistent, per-path)~~ ✅
+* ~~Secure encrypted storage (DPAPI)~~ ✅
+* ~~Context menu for manual trust marking~~ ✅
+* ~~Lock icon visual indicator for manual overrides~~ ✅
+* ~~Filtering by trust level~~ ✅
+* ~~Multithreaded signature verification~~ ✅
+* ~~ACL protection for trust database~~ ✅
+* ~~Atomic file writes with crash recovery~~ ✅
+
+**Short term (v1.4.x):**
 
 * IP/domain filter with search
 * Export to CSV/JSON
